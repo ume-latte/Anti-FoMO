@@ -5,22 +5,54 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
 import random
+from firebase import firebase
 
+# 初始化 FastAPI 應用
 app = FastAPI()
+
+# 初始化 LINE Bot API 和 Webhook Parser
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 
-# 獲取Spotify API訪問令牌
+# Spotify API 設定
 SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = 'https://anti-fomo-lmco7iucya-de.a.run.app/webhooks/line'  # 你的回調URL
+SPOTIFY_REDIRECT_URI = 'https://anti-fomo-lmco7iucya-de.a.run.app/webhooks/line/callback'  # 你的回調URL
 
-# 在 LINE Bot 中引導用戶到授權 URL
+# Firebase 設定
+firebase_url = os.getenv('FIREBASE_URL')
+fdb = firebase.FirebaseApplication(firebase_url, None)
+
+# 生成 Spotify 授權 URL
 def generate_spotify_auth_url():
     auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
     return auth_url
 
+# 交換授權碼為訪問令牌
+def exchange_code_for_token(code):
+    token_url = 'https://accounts.spotify.com/api/token'
+    payload = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': SPOTIFY_REDIRECT_URI,
+        'client_id': SPOTIFY_CLIENT_ID,
+        'client_secret': SPOTIFY_CLIENT_SECRET
+    }
+    response = requests.post(token_url, data=payload)
+    if response.status_code == 200:
+        return response.json()['access_token']
+    else:
+        raise Exception("Failed to obtain Spotify access token")
+
+# 儲存和使用訪問令牌
+def save_spotify_token(user_id, token):
+    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
+
+def get_spotify_token(user_id):
+    return fdb.get(f'spotify_tokens/{user_id}', 'token')
+
+# 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
     signature = request.headers['X-Line-Signature']
@@ -65,42 +97,6 @@ async def spotify_callback(request: Request):
     else:
         return "授權失敗，請重試。"
 
-def exchange_code_for_token(code):
-    token_url = 'https://accounts.spotify.com/api/token'
-    payload = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': SPOTIFY_REDIRECT_URI,
-        'client_id': SPOTIFY_CLIENT_ID,
-        'client_secret': SPOTIFY_CLIENT_SECRET
-    }
-    response = requests.post(token_url, data=payload)
-    if response.status_code == 200:
-        return response.json()['access_token']
-    else:
-        raise Exception("Failed to obtain Spotify access token")
-
-# 儲存和使用訪問令牌
-from firebase import firebase
-
-firebase_url = os.getenv('FIREBASE_URL')
-fdb = firebase.FirebaseApplication(firebase_url, None)
-
-def save_spotify_token(user_id, token):
-    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
-
-def get_spotify_token(user_id):
-    return fdb.get(f'spotify_tokens/{user_id}', 'token')
-
-# 儲存使用者的聽歌歷史
-def save_user_history(user_id, track):
-    user_history_path = f'history/{user_id}'
-    history = fdb.get(user_history_path, None)
-    if history is None:
-        history = []
-    history.append(track)
-    fdb.put(user_history_path, None, history)
-
 # 推薦歌曲和播放清單函數
 def get_user_history(user_id):
     user_history_path = f'history/{user_id}'
@@ -109,13 +105,8 @@ def get_user_history(user_id):
         history = []
     return history
 
-def get_spotify_access_token():
-    # 這個函數應該實現獲取 Spotify 訪問令牌的邏輯
-    # 根據實際需求進行實現
-    pass
-
 def recommend_song(user_id):
-    access_token = get_spotify_access_token()
+    access_token = get_spotify_token(user_id)
     headers = {"Authorization": f"Bearer {access_token}"}
     user_history = get_user_history(user_id)
 
@@ -143,7 +134,7 @@ def recommend_song(user_id):
         return "無法推薦歌曲。"
 
 def recommend_playlist(user_id):
-    access_token = get_spotify_access_token()
+    access_token = get_spotify_token(user_id)
     headers = {"Authorization": f"Bearer {access_token}"}
     user_history = get_user_history(user_id)
 
@@ -172,6 +163,7 @@ def recommend_playlist(user_id):
     else:
         return "無法推薦播放清單。"
 
+# 主程式
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get('PORT', default=8080))

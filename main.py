@@ -11,21 +11,67 @@ line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 
 #獲取Spotify API訪問令牌
-SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/api/token'
+#SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/api/token'
+SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
-SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+SPOTIFY_REDIRECT_URI = 'https://your-app.com/callback'  # 你的回調URL
 
-def get_spotify_access_token():
+#在 LINE Bot 中引導用戶到授權 URL
+@app.post("/webhooks/line")
+async def handle_callback(request: Request):
+    signature = request.headers['X-Line-Signature']
+    body = await request.body()
+    body = body.decode()
+    
+    try:
+        events = parser.parse(body, signature)
+    except InvalidSignatureError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    for event in events:
+        if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
+            text = event.message.text.lower()
+            
+            if "連接spotify" in text:
+                auth_url = generate_spotify_auth_url()
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
+
+#處理 Spotify 的回調請求
+router = APIRouter()
+
+@router.get("/callback")
+async def spotify_callback(request: Request):
+    code = request.query_params.get('code')
+    if code:
+        token = exchange_code_for_token(code)
+        # 在這裡保存訪問令牌，關聯到用戶
+        return "Spotify 授權成功！你現在可以回到LINE並使用Spotify功能。"
+    else:
+        return "授權失敗，請重試。"
+
+def exchange_code_for_token(code):
+    token_url = 'https://accounts.spotify.com/api/token'
     payload = {
-        'grant_type': 'client_credentials',
+        'grant_type': 'authorization_code',
+        'code': code,
+        'redirect_uri': SPOTIFY_REDIRECT_URI,
         'client_id': SPOTIFY_CLIENT_ID,
         'client_secret': SPOTIFY_CLIENT_SECRET
     }
-    response = requests.post(SPOTIFY_AUTH_URL, data=payload)
+    response = requests.post(token_url, data=payload)
     if response.status_code == 200:
         return response.json()['access_token']
     else:
         raise Exception("Failed to obtain Spotify access token")
+
+#儲存和使用訪問令牌
+def save_spotify_token(user_id, token):
+    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
+
+def get_spotify_token(user_id):
+    return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
 #儲存使用者的聽歌歷史
 from firebase import firebase

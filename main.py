@@ -18,7 +18,7 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = 'https://anti-fomo-lmco7iucya-de.a.run.app/webhooks/line/callback'  # 你的回調URL
+SPOTIFY_REDIRECT_URI = 'https://anti-fomo-lmco7iucya-de.a.run.app/webhooks/line'  # 你的回調URL
 
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')

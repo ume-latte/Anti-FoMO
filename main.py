@@ -1,24 +1,18 @@
-import os
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
+import os
 
-# 初始化FastAPI和LINE Bot相關設置
 app = FastAPI()
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 
-# Spotify API設置
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-
-# Spotify OAuth 2.0授權資訊
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/api/token"
-SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 
-# 獲取Spotify API訪問權杖的幫助函數
 def get_spotify_access_token():
     payload = {
         'grant_type': 'client_credentials',
@@ -29,9 +23,40 @@ def get_spotify_access_token():
     if response.status_code == 200:
         return response.json()['access_token']
     else:
-        raise HTTPException(status_code=500, detail="Failed to obtain Spotify access token")
+        raise Exception("Failed to obtain Spotify access token")
 
-# 處理LINE Bot的Webhook
+def search_song(query):
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
+    response = requests.get(search_url, headers=headers)
+    
+    if response.status_code == 200:
+        tracks = response.json()["tracks"]["items"]
+        if tracks:
+            track = tracks[0]
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            return f"推薦歌曲：{song_name} - {artist_name}"
+        else:
+            return "找不到相關的歌曲。"
+    else:
+        return "無法搜索歌曲。"
+
+def recommend_playlist():
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    playlist_id = "37i9dQZF1DXcBWIGoYBM5M"
+    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
+    response = requests.get(playlist_url, headers=headers)
+    
+    if response.status_code == 200:
+        playlist = response.json()
+        playlist_name = playlist["name"]
+        return f"推薦播放清單：{playlist_name}"
+    else:
+        return "無法推薦播放清單。"
+
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
     signature = request.headers['X-Line-Signature']
@@ -48,30 +73,15 @@ async def handle_callback(request: Request):
             text = event.message.text.lower()
             
             if "推薦歌曲" in text:
-                access_token = get_spotify_access_token()
-                headers = {"Authorization": f"Bearer {access_token}"}
-                search_url = f"{SPOTIFY_API_BASE_URL}/search?q=love&type=track"
-                response = requests.get(search_url, headers=headers)
-                
-                if response.status_code == 200:
-                    song_name = response.json()["tracks"]["items"][0]["name"]
-                    artist_name = response.json()["tracks"]["items"][0]["artists"][0]["name"]
-                    reply_text = f"這裡是一首不錯的歌曲推薦給你：{song_name} - {artist_name}"
-                else:
-                    reply_text = "抱歉，無法獲取歌曲推薦。"
-                
+                reply_text = search_song("love")
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                 
             elif "推薦播放清單" in text:
-                access_token = get_spotify_access_token()
-                headers = {"Authorization": f"Bearer {access_token}"}
-                playlist_url = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}"
-                response = requests.get(playlist_url, headers=headers)
-                
-                if response.status_code == 200:
-                    playlist_name = response.json()["name"]
-                    reply_text = f"這裡是一個不錯的播放清單推薦給你：{playlist_name}"
-                else:
-                    reply_text = "抱歉，無法獲取播放清單推薦。"
-                
+                reply_text = recommend_playlist()
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+    
+    return 'OK'
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', default=8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)

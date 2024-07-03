@@ -1,48 +1,37 @@
-import logging
 import os
-import re
-import sys
-from datetime import datetime
+from fastapi import FastAPI, Request, HTTPException
+from linebot import LineBotApi, WebhookParser
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
-from fastapi import FastAPI, HTTPException, Request
-from linebot import (
-    LineBotApi, WebhookParser
-)
-from linebot.exceptions import (
-    InvalidSignatureError
-)
-from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage
-)
-import uvicorn
-from dotenv import load_dotenv
 
-if os.getenv('API_ENV') != 'production':
-    load_dotenv()
-
+# 初始化FastAPI和LINE Bot相關設置
 app = FastAPI()
+line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
+parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 
-logging.basicConfig(level=os.getenv('LOG', 'WARNING'))
-logger = logging.getLogger(__file__)
+# Spotify API設置
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 
-channel_secret = os.getenv('LINE_CHANNEL_SECRET')
-channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
-if not channel_secret or not channel_access_token:
-    logger.error('Specify LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN as environment variables.')
-    sys.exit(1)
+# Spotify OAuth 2.0授權資訊
+SPOTIFY_AUTH_URL = "https://accounts.spotify.com/api/token"
+SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 
-line_bot_api = LineBotApi(channel_access_token)
-parser = WebhookParser(channel_secret)
+# 獲取Spotify API訪問權杖的幫助函數
+def get_spotify_access_token():
+    payload = {
+        'grant_type': 'client_credentials',
+        'client_id': SPOTIFY_CLIENT_ID,
+        'client_secret': SPOTIFY_CLIENT_SECRET
+    }
+    response = requests.post(SPOTIFY_AUTH_URL, data=payload)
+    if response.status_code == 200:
+        return response.json()['access_token']
+    else:
+        raise HTTPException(status_code=500, detail="Failed to obtain Spotify access token")
 
-spotify_client_id = os.getenv('SPOTIFY_CLIENT_ID')
-spotify_client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-spotify_redirect_uri = os.getenv('SPOTIFY_REDIRECT_URI')
-
-@app.get("/health")
-async def health():
-    return 'ok'
-    
-#推薦歌曲或播放清單
+# 處理LINE Bot的Webhook
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
     signature = request.headers['X-Line-Signature']
@@ -59,24 +48,30 @@ async def handle_callback(request: Request):
             text = event.message.text.lower()
             
             if "推薦歌曲" in text:
-                # 使用Spotify API進行歌曲搜索或推薦
-                # 可以根據需要自定義相應的邏輯
-                reply_text = "這裡是一首不錯的歌曲推薦給你：[歌曲名稱] - [藝人名稱]"
+                access_token = get_spotify_access_token()
+                headers = {"Authorization": f"Bearer {access_token}"}
+                search_url = f"{SPOTIFY_API_BASE_URL}/search?q=love&type=track"
+                response = requests.get(search_url, headers=headers)
+                
+                if response.status_code == 200:
+                    song_name = response.json()["tracks"]["items"][0]["name"]
+                    artist_name = response.json()["tracks"]["items"][0]["artists"][0]["name"]
+                    reply_text = f"這裡是一首不錯的歌曲推薦給你：{song_name} - {artist_name}"
+                else:
+                    reply_text = "抱歉，無法獲取歌曲推薦。"
+                
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                 
             elif "推薦播放清單" in text:
-                # 使用Spotify API進行播放清單推薦
-                # 可以根據需要自定義相應的邏輯
-                reply_text = "這裡是一個不錯的播放清單推薦給你：[播放清單名稱]"
+                access_token = get_spotify_access_token()
+                headers = {"Authorization": f"Bearer {access_token}"}
+                playlist_url = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}"
+                response = requests.get(playlist_url, headers=headers)
+                
+                if response.status_code == 200:
+                    playlist_name = response.json()["name"]
+                    reply_text = f"這裡是一個不錯的播放清單推薦給你：{playlist_name}"
+                else:
+                    reply_text = "抱歉，無法獲取播放清單推薦。"
+                
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-
-
-
-
-    return 'OK'
-
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', default=8080))
-    debug = True if os.environ.get('API_ENV', default='develop') == 'develop' else False
-    logging.info('Application will start...')
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=debug)

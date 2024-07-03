@@ -4,6 +4,7 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
+import random
 
 app = FastAPI()
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
@@ -12,6 +13,20 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_AUTH_URL = "https://accounts.spotify.com/api/token"
+
+#儲存使用者的聽歌歷史
+from firebase import firebase
+
+firebase_url = os.getenv('FIREBASE_URL')
+fdb = firebase.FirebaseApplication(firebase_url, None)
+
+def save_user_history(user_id, track):
+    user_history_path = f'history/{user_id}'
+    history = fdb.get(user_history_path, None)
+    if history is None:
+        history = []
+    history.append(track)
+    fdb.put(user_history_path, None, history)
 
 def get_spotify_access_token():
     payload = {
@@ -25,38 +40,67 @@ def get_spotify_access_token():
     else:
         raise Exception("Failed to obtain Spotify access token")
 
-def search_song(query):
+def get_user_history(user_id):
+    user_history_path = f'history/{user_id}'
+    history = fdb.get(user_history_path, None)
+    if history is None:
+        history = []
+    return history
+
+def recommend_song(user_id):
     access_token = get_spotify_access_token()
     headers = {"Authorization": f"Bearer {access_token}"}
-    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
-    response = requests.get(search_url, headers=headers)
+    user_history = get_user_history(user_id)
+    
+    if user_history:
+        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
+        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
+    else:
+        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
+
+    response = requests.get(recommend_url, headers=headers)
     
     if response.status_code == 200:
-        tracks = response.json()["tracks"]["items"]
+        tracks = response.json()["tracks"]
         if tracks:
             track = tracks[0]
             song_name = track["name"]
             artist_name = track["artists"][0]["name"]
+            save_user_history(user_id, {'id': track['id'], 'name': song_name, 'artist': artist_name})
             return f"推薦歌曲：{song_name} - {artist_name}"
         else:
             return "找不到相關的歌曲。"
     else:
-        return "無法搜索歌曲。"
+        return "無法推薦歌曲。"
 
-def recommend_playlist():
+
+#使用Spotify的推薦API
+#更新search_song和recommend_playlist函數來根據使用者的聽歌歷史推薦歌曲。
+def recommend_playlist(user_id):
     access_token = get_spotify_access_token()
     headers = {"Authorization": f"Bearer {access_token}"}
-    playlist_id = "37i9dQZF1DXcBWIGoYBM5M"
-    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
-    response = requests.get(playlist_url, headers=headers)
+    user_history = get_user_history(user_id)
+    
+    if user_history:
+        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
+        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
+    else:
+        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
+
+    response = requests.get(recommend_url, headers=headers)
     
     if response.status_code == 200:
-        playlist = response.json()
-        playlist_name = playlist["name"]
-        return f"推薦播放清單：{playlist_name}"
+        tracks = response.json()["tracks"]
+        if tracks:
+            playlist = [f"{track['name']} - {track['artists'][0]['name']}" for track in tracks]
+            return "推薦播放清單：\n" + "\n".join(playlist)
+        else:
+            return "找不到相關的播放清單。"
     else:
         return "無法推薦播放清單。"
 
+
+#整合到LINE Bot
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
     signature = request.headers['X-Line-Signature']
@@ -71,13 +115,14 @@ async def handle_callback(request: Request):
     for event in events:
         if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
             text = event.message.text.lower()
+            user_id = event.source.user_id
             
             if "推薦歌曲" in text:
-                reply_text = search_song("love")
+                reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                 
             elif "推薦播放清單" in text:
-                reply_text = recommend_playlist()
+                reply_text = recommend_playlist(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
     
     return 'OK'

@@ -13,24 +13,17 @@ from linebot.exceptions import (
 )
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage,
-    TemplateSendMessage, ButtonsTemplate, MessageAction, URIAction,
     FlexSendMessage
 )
 import uvicorn
-
-# 新增的
-from flask import Flask, request, abort
-from linebot import WebhookHandler
 
 if os.getenv('API_ENV') != 'production':
     from dotenv import load_dotenv
     load_dotenv()
 
-app = Flask(__name__)
+app = FastAPI()
 logging.basicConfig(level=os.getenv('LOG', 'WARNING'))
 logger = logging.getLogger(__file__)
-
-app = FastAPI()
 
 channel_secret = os.getenv('LINE_CHANNEL_SECRET')
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
@@ -43,6 +36,9 @@ parser = WebhookParser(channel_secret)
 
 firebase_url = os.getenv('FIREBASE_URL')
 gemini_key = os.getenv('GEMINI_API_KEY')
+spotify_client_id = os.getenv('SPOTIFY_CLIENT_ID')
+spotify_client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+spotify_redirect_uri = os.getenv('SPOTIFY_REDIRECT_URI')
 
 import google.generativeai as genai
 from firebase import firebase
@@ -175,23 +171,6 @@ async def handle_callback(request: Request):
                 event.reply_token,
                 TextSendMessage(text=reply_msg)
             )
-
-    return 'OK'
-
-@app.route("/callback", methods=['POST'])
-def callback():
-    # get X-Line-Signature header value
-    signature = request.headers['X-Line-Signature']
-
-    # get request body as text
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-
-    # handle webhook body
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
 
     return 'OK'
 

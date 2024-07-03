@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, APIRouter
+from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
@@ -6,6 +6,7 @@ import requests
 import os
 import random
 from firebase import firebase
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -43,7 +44,7 @@ def exchange_code_for_token(code):
     if response.status_code == 200:
         return response.json()['access_token']
     else:
-        raise Exception("Failed to obtain Spotify access token")
+        raise HTTPException(status_code=400, detail="Failed to obtain Spotify access token")
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
@@ -55,7 +56,7 @@ def get_spotify_token(user_id):
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get('X-Line-Signature', '')
     body = await request.body()
     body = body.decode()
 
@@ -85,15 +86,12 @@ async def handle_callback(request: Request):
     return 'OK'
 
 # 處理 Spotify 的回調請求
-router = APIRouter()
-
-@router.get("/callback")
-async def spotify_callback(request: Request):
-    code = request.query_params.get('code')
+@app.get("/callback")
+async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
         # 在這裡保存訪問令牌，關聯到用戶
-        return "Spotify 授權成功！你現在可以回到LINE並使用Spotify功能。"
+        return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
 

@@ -35,7 +35,7 @@ def generate_spotify_auth_url(client_id, redirect_uri, scope):
     return auth_url
 
 # 處理 LINE Webhook 請求
-@router.post("api/webhooks/line")
+@router.post("/api/webhooks/line")  # 設定端點為/api/webhooks/line
 async def handle_callback(request: Request):
     signature = request.headers.get('X-Line-Signature', '')
     body = await request.body()

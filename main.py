@@ -7,10 +7,12 @@ import os
 import random
 from firebase import firebase
 from fastapi.responses import HTMLResponse, RedirectResponse
+from urllib.parse import quote
 
 # 初始化 FastAPI 應用
 app = FastAPI()
-
+# 定義路由器
+router = APIRouter()
 
 # 定義 endpoint 路徑和處理函數
 @router.get("/spotify-auth-url")
@@ -32,6 +34,8 @@ SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
+SPOTIFY_SCOPE = 'user-read-private user-read-email'
+
 
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')

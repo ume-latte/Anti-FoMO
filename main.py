@@ -171,7 +171,8 @@ async def handle_callback(request: Request):
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=reply_msg)]
                 ))
-return 'OK'
+
+    return 'OK'
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', default=8080))

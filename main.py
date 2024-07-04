@@ -27,7 +27,7 @@ fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 生成 Spotify 授權 URL
 def generate_spotify_auth_url():
-    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
+    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private%20user-read-email"
     return auth_url
 
 # 交換授權碼為訪問令牌
@@ -91,6 +91,7 @@ async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
         # 在這裡保存訪問令牌，關聯到用戶
+        save_spotify_token(user_id, token)
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
@@ -154,15 +155,4 @@ def recommend_playlist(user_id):
                 track_url = track["external_urls"]["spotify"]
                 track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
                 save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-            return "推薦播放清單：\n" + "\n\n".join(playlist)
-        else:
-            return "找不到相關的播放清單。"
-    else:
-        return "無法推薦播放清單。"
-
-# 主程式
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get('PORT', default=8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track

@@ -11,16 +11,16 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 # 初始化 FastAPI 應用
 app = FastAPI()
 
-@app.get("/new_endpoint/")
-async def new_endpoint():
-    # 在這裡寫入端點的邏輯處理
-    return {"message": "Hello from the new endpoint!"}
-    
-@app.post("/process_data/")
-async def process_data(request: Request):
-    data = await request.json()
-    # 執行一些處理
-    return {"message": "Data processed successfully", "data": data}
+
+# 定義 endpoint 路徑和處理函數
+@router.get("/spotify-auth-url")
+async def spotify_auth_url():
+    auth_url = generate_spotify_auth_url(SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPE)
+    return {"spotify_auth_url": auth_url}
+
+# 將路由器連接到主應用
+app.include_router(router)
+
 
 
 # 初始化 LINE Bot API 和 Webhook Parser

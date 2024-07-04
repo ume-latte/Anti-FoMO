@@ -15,6 +15,13 @@ app = FastAPI()
 async def new_endpoint():
     # 在這裡寫入端點的邏輯處理
     return {"message": "Hello from the new endpoint!"}
+    
+@app.post("/process_data/")
+async def process_data(request: Request):
+    data = await request.json()
+    # 執行一些處理
+    return {"message": "Data processed successfully", "data": data}
+
 
 # 初始化 LINE Bot API 和 Webhook Parser
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))

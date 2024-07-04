@@ -11,6 +11,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 # 初始化 FastAPI 應用
 app = FastAPI()
 
+@app.get("/new_endpoint/")
+async def new_endpoint():
+    # 在這裡寫入端點的邏輯處理
+    return {"message": "Hello from the new endpoint!"}
+
 # 初始化 LINE Bot API 和 Webhook Parser
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))

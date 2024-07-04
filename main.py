@@ -89,6 +89,9 @@ async def handle_callback(request: Request):
 @app.get("/callback")
 async def spotify_callback(request: Request, code: str):
     if code:
+        # 获取 user_id，这里需要根据你的实际情况获取正确的 user_id
+        user_id = 'your_user_id_here'
+
         token = exchange_code_for_token(code)
         # 在這裡保存訪問令牌，關聯到用戶
         save_spotify_token(user_id, token)
@@ -124,8 +127,8 @@ def recommend_song(user_id):
             song_name = track["name"]
             artist_name = track["artists"][0]["name"]
             track_url = track["external_urls"]["spotify"]
-            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-            save_user_history(user_id, track_info)
+            # 保存用户历史记录的逻辑，这里假设你有一个 save_user_history 函数
+            save_user_history(user_id, {'id': track['id'], 'name': song_name, 'artist': artist_name})
             return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
         else:
             return "找不到相關的歌曲。"
@@ -153,6 +156,18 @@ def recommend_playlist(user_id):
                 song_name = track["name"]
                 artist_name = track["artists"][0]["name"]
                 track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track
+
+                save_user_history(user_id, {'id': track['id'], 'name': song_name, 'artist': artist_name})
+                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
+            return "推薦播放清單：\n" + "\n\n".join(playlist)
+        else:
+            return "找不到相關的播放清單。"
+    else:
+        return "無法推薦播放清單。"
+
+# 主程式
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get('PORT', default=8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+

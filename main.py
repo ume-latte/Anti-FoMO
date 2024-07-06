@@ -74,8 +74,8 @@ async def handle_callback(request: Request):
 
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                #reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                #await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
@@ -97,49 +97,34 @@ async def spotify_callback(request: Request, code: str):
     else:
         return "授權失敗，請重試。"
 
-# 推薦歌曲和播放清單函數
-def get_user_history(user_id):
-    user_history_path = f'history/{user_id}'
-    history = fdb.get(user_history_path, None)
-    if history is None:
-        history = []
-    return history
-
-def recommend_song(user_id):
-    try:
-        access_token = get_spotify_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
-
-        user_history = get_user_history(user_id)
-
-        if user_history:
-            seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        else:
-            seed_tracks = "7ixxyJJJKZdo8bsdWwkaB6"  # Example track ID
-
+# 推薦歌曲
+  def recommend_song(user_id):
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_history = get_user_history(user_id)
+    
+    if user_history:
+        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
         recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
-        response = requests.get(recommend_url, headers=headers)
+    else:
+        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
 
-        if response.status_code == 200:
-            tracks = response.json().get("tracks", [])
-            if tracks:
-                track = tracks[0]
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
-            else:
-                return "找不到相關的歌曲。"
+    response = requests.get(recommend_url, headers=headers)
+    
+    if response.status_code == 200:
+        tracks = response.json()["tracks"]
+        if tracks:
+            track = tracks[0]
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            track_url = track["external_urls"]["spotify"]
+            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+            save_user_history(user_id, track_info)
+            return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
         else:
-            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法推薦歌曲。api"
-    except Exception as e:
-        print(f"發生錯誤：{str(e)}")
-        return "無法推薦歌曲。例外"
+            return "找不到相關的歌曲。"
+    else:
+        return "無法推薦歌曲。"
 
 
 

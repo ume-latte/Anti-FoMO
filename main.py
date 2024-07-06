@@ -17,6 +17,23 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
+spotify_tracks = [
+    "https://open.spotify.com/track/3E5XrOtqMAs7p2wKhwgOjf",
+    "https://open.spotify.com/track/3RauEVgRgj1IuWdJ9fDs70",
+    "https://open.spotify.com/track/1dNIEtp7AY3oDAKCGg2XkH",
+    "https://open.spotify.com/track/76N7FdzCI9OsiUnzJVLY2m",
+    "https://open.spotify.com/track/09CtPGIpYB4BrO8qb1RGsF",
+    "https://open.spotify.com/track/7iuHBHtxQNKRTGKkYpXmGM",
+    "https://open.spotify.com/track/2JdzcxKSk7raYujsLYUXvi",
+    "https://open.spotify.com/track/1yTQ39my3MoNROlFw3RDNy",
+    "https://open.spotify.com/track/1z3ugFmUKoCzGsI6jdY4Ci",
+    "https://open.spotify.com/track/4o6BgsqLIBViaGVbx5rbRk"
+]
+
+# 將歌曲 URL 寫入 Firebase
+for index, track_url in enumerate(spotify_tracks, start=1):
+    fdb.put('/spotify_tracks', f'track_{index}', track_url)
+
 # 儲存和使用訪問令牌
 def save_user_history(user_id, track_info):
     user_history_path = f'history/{user_id}'
@@ -35,9 +52,14 @@ def get_user_history(user_id):
 
 # 推薦歌曲和播放清單函數
 def recommend_song(user_id):
-    spotify_playlist_url = fdb.get('/spotify_playlist_url', None)
-    if spotify_playlist_url:
-        return f"推薦歌曲：您可以在這裡收聽歌曲：{spotify_playlist_url}"
+    user_history = get_user_history(user_id)
+    
+    # 從 firebase 中取得 spotify_tracks
+    spotify_tracks = fdb.get('/spotify_tracks', None)
+    
+    if spotify_tracks:
+        random_track_url = random.choice(list(spotify_tracks.values()))
+        return f"推薦歌曲：您可以在這裡收聽歌曲：{random_track_url}"
     else:
         return "找不到相關的歌曲。"
 

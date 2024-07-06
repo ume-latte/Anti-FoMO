@@ -39,8 +39,13 @@ async def handle_callback(request: Request):
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
-                recommended_song = recommend_song()
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"推薦的歌曲: {recommended_song}"))
+                reply_text = search_song("FoMO")
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                
+            elif "推薦播放清單" in text:
+                reply_text = recommend_playlist()
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+    
 
     return 'OK'
 
@@ -53,20 +58,37 @@ def generate_spotify_auth_url():
     return auth_url
 
 # 推薦歌曲
-def recommend_song():
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+def search_song(query):
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
+    response = requests.get(search_url, headers=headers)
+    
+    if response.status_code == 200:
+        tracks = response.json()["tracks"]["items"]
+        if tracks:
+            track = tracks[0]
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            return f"推薦歌曲：{song_name} - {artist_name}"
+        else:
+            return "找不到相關的歌曲。"
+    else:
+        return "無法搜索歌曲。"
+
+def recommend_playlist():
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    playlist_id = "7oJx24EcRU7fIVoTdqKscK"
+    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
     response = requests.get(playlist_url, headers=headers)
     
-    soup = BeautifulSoup(response.text, 'html.parser')
-    song_elements = soup.find_all('div', class_='tracklist-name')
-    
-    if song_elements:
-        random_song_element = random.choice(song_elements)
-        return random_song_element.text.strip()
+    if response.status_code == 200:
+        playlist = response.json()
+        playlist_name = playlist["name"]
+        return f"推薦播放清單：{playlist_name}"
     else:
-        return '未找到歌曲'
+        return "無法推薦播放清單。"
 
 # 主程式
 if __name__ == "__main__":

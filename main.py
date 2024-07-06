@@ -89,6 +89,8 @@ async def handle_callback(request: Request):
             
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
             
             elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)

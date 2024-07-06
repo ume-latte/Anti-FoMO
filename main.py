@@ -44,7 +44,7 @@ def exchange_code_for_token(code):
     if response.status_code == 200:
         return response.json()['access_token']
     else:
-        raise HTTPException(status_code=400, detail="Failed to obtain Spotify access token")
+        raise HTTPException(status_code=400, detail=f"Failed to obtain Spotify access token: {response.json()}")
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
@@ -89,9 +89,13 @@ async def handle_callback(request: Request):
 @app.get("/callback")
 async def spotify_callback(request: Request, code: str):
     if code:
-        token = exchange_code_for_token(code)
-        # 在這裡保存訪問令牌，關聯到用戶
-        return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
+        try:
+            token = exchange_code_for_token(code)
+            user_id = "some_user_id"  # 在這裡添加用戶識別邏輯
+            save_spotify_token(user_id, token)
+            return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
+        except HTTPException as e:
+            return e.detail
     else:
         return "授權失敗，請重試。"
 
@@ -102,6 +106,12 @@ def get_user_history(user_id):
     if history is None:
         history = []
     return history
+
+def save_user_history(user_id, track_info):
+    user_history_path = f'history/{user_id}'
+    history = get_user_history(user_id)
+    history.append(track_info)
+    fdb.put(user_history_path, 'tracks', history)
 
 def recommend_song(user_id):
     try:
@@ -159,7 +169,7 @@ def recommend_playlist(user_id):
 
         response = requests.get(recommend_url, headers=headers)
 
-        if response.status_code == 200:
+        if response.status_code == 200):
             tracks = response.json().get("tracks", [])
             if tracks:
                 playlist = []

@@ -5,7 +5,6 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
 from firebase import firebase
-from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -18,7 +17,7 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
 
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')
@@ -47,10 +46,14 @@ def exchange_code_for_token(code):
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
-    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
+    fdb.put(f'spotify_tokens', user_id, {'token': token})
 
 def get_spotify_token(user_id):
-    return fdb.get(f'spotify_tokens/{user_id}', 'token')
+    data = fdb.get(f'spotify_tokens', user_id)
+    if data:
+        return data['token']
+    else:
+        return None
 
 # 獲取使用者的 Spotify 訪問令牌
 def get_user_spotify_token(user_id):
@@ -66,11 +69,10 @@ def recommend_song(user_id):
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
-    # 使用 Spotify API 獲取推薦的歌曲
     endpoint = 'https://api.spotify.com/v1/recommendations'
     params = {
-        'limit': 1,  # 限制推薦結果為一首歌曲
-        'seed_genres': 'pop',  # 指定推薦流派為 pop，你可以根據需要調整
+        'limit': 1,
+        'seed_genres': 'pop',
     }
     response = requests.get(endpoint, headers=headers, params=params)
 
@@ -89,10 +91,9 @@ def recommend_playlist(user_id):
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
-    # 使用 Spotify API 獲取推薦的播放清單
     endpoint = 'https://api.spotify.com/v1/me/playlists'
     params = {
-        'limit': 1,  # 限制推薦結果為一個播放清單
+        'limit': 1,
     }
     response = requests.get(endpoint, headers=headers, params=params)
 
@@ -121,12 +122,7 @@ async def handle_callback(request: Request):
             text = event.message.text.lower()
             user_id = event.source.user_id
 
-            if "連接spotify" in text:
-                auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-
-            elif "推薦歌曲" in text:
+            if "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
@@ -141,7 +137,8 @@ async def handle_callback(request: Request):
 async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
-        # 在這裡保存訪問令牌，關聯到用戶
+        user_id = "some_user_id"  # 替換為實際用戶ID
+        save_spotify_token(user_id, token)
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"

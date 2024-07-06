@@ -1,4 +1,3 @@
-import logging
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
@@ -26,10 +25,6 @@ SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中�
 firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
-# 設置日誌
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # 生成 Spotify 授權 URL
 def generate_spotify_auth_url():
     auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
@@ -49,18 +44,19 @@ def exchange_code_for_token(code):
     if response.status_code == 200:
         return response.json()['access_token']
     else:
-        logger.error(f"Failed to obtain Spotify access token: {response.text}")
         raise HTTPException(status_code=400, detail="Failed to obtain Spotify access token")
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
-    logger.info(f"Saving Spotify token for user_id {user_id}")
     fdb.put(f'spotify_tokens/{user_id}', 'token', token)
 
 def get_spotify_token(user_id):
-    token = fdb.get(f'spotify_tokens/{user_id}', 'token')
-    logger.info(f"Retrieved Spotify token for user_id {user_id}: {token}")
-    return token
+    return fdb.get(f'spotify_tokens/{user_id}', 'token')
+
+# 保存使用者歌曲歷史
+def save_user_history(user_id, track_info):
+    history_path = f'history/{user_id}'
+    fdb.post(history_path, track_info)
 
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
@@ -99,33 +95,15 @@ async def handle_callback(request: Request):
 async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
-        # 在這裡保存訪問令牌，關聯到用戶
+        save_spotify_token(user_id, token)  # 假設在這裡保存訪問令牌，關聯到用戶
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
 
-# 推薦歌曲和播放清單函數
-def get_user_history(user_id):
-    user_history_path = f'history/{user_id}'
-    history = fdb.get(user_history_path, None)
-    logger.info(f"Retrieved history for user_id {user_id}: {history}")
-    if history is None:
-        history = []
-    return history
-
-def save_user_history(user_id, track_info):
-    user_history_path = f'history/{user_id}'
-    history = get_user_history(user_id)
-    history.append(track_info)
-    fdb.put(user_history_path, 'tracks', history)
-    logger.info(f"Saved track info for user_id {user_id}: {track_info}")
-
+# 推薦歌曲函數
 def recommend_song(user_id):
     try:
         access_token = get_spotify_token(user_id)
-        if not access_token:
-            return "請先連接你的Spotify帳戶。"
-
         headers = {
             "Authorization": f"Bearer {access_token}"
         }
@@ -139,7 +117,6 @@ def recommend_song(user_id):
 
         recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
         response = requests.get(recommend_url, headers=headers)
-        logger.info(f"Spotify API response: {response.json()}")
 
         if response.status_code == 200:
             tracks = response.json().get("tracks", [])
@@ -154,29 +131,29 @@ def recommend_song(user_id):
             else:
                 return "找不到相關的歌曲。"
         else:
-            logger.error(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
+            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
             return "無法推薦歌曲。api"
     except Exception as e:
-        logger.error(f"發生錯誤：{str(e)}")
+        print(f"發生錯誤：{str(e)}")
         return "無法推薦歌曲。例外"
 
+# 推薦播放清單函數
 def recommend_playlist(user_id):
     try:
         access_token = get_spotify_token(user_id)
-        if not access_token:
-            return "請先連接你的Spotify帳戶。"
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
 
-        headers = {"Authorization": f"Bearer {access_token}"}
         user_history = get_user_history(user_id)
 
         if user_history:
             seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-            recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
         else:
-            recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
+            seed_tracks = ""
 
+        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
         response = requests.get(recommend_url, headers=headers)
-        logger.info(f"Spotify API response: {response.json()}")
 
         if response.status_code == 200:
             tracks = response.json()["tracks"]
@@ -193,10 +170,10 @@ def recommend_playlist(user_id):
             else:
                 return "找不到相關的播放清單。"
         else:
-            logger.error(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
+            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
             return "無法推薦播放清單。api"
     except Exception as e:
-        logger.error(f"發生錯誤：{str(e)}")
+        print(f"發生錯誤：{str(e)}")
         return "無法推薦播放清單。例外"
 
 # 主程式

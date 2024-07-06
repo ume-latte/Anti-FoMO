@@ -53,6 +53,27 @@ def save_spotify_token(user_id, token):
 def get_spotify_token(user_id):
     return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
+# Spotify API 請求
+def fetch_web_api(endpoint, method='GET', body=None):
+    token = get_spotify_token(user_id)
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+
+    url = f'https://api.spotify.com/{endpoint}'
+
+    if method == 'GET':
+        response = requests.get(url, headers=headers)
+    else:
+        response = requests.request(method, url, headers=headers, json=body)
+
+    return response.json()
+
+def get_recommendations(seed_tracks):
+    endpoint = f'v1/recommendations?limit=5&seed_tracks={",".join(seed_tracks)}'
+    return fetch_web_api(endpoint)['tracks']
+
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
@@ -90,7 +111,8 @@ async def handle_callback(request: Request):
 async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
-        # 在這裡保存訪問令牌，關聯到用戶
+        user_id = "some_user_id"  # Replace with actual user ID logic
+        save_spotify_token(user_id, token)
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
@@ -103,31 +125,31 @@ def get_user_history(user_id):
         history = []
     return history
 
+def save_user_history(user_id, track_info):
+    user_history_path = f'history/{user_id}'
+    history = get_user_history(user_id)
+    history.append(track_info)
+    fdb.put(user_history_path, 'tracks', history)
+
 def recommend_song(user_id):
     access_token = get_spotify_token(user_id)
     headers = {"Authorization": f"Bearer {access_token}"}
     user_history = get_user_history(user_id)
 
     if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
+        seed_tracks = [track['id'] for track in random.sample(user_history, min(5, len(user_history)))]
     else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
+        seed_tracks = ["4NHQUGzhtTLFvgF5SZesLK"]  # Replace with a default track ID
 
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            track = tracks[0]
-            song_name = track["name"]
-            artist_name = track["artists"][0]["name"]
-            track_url = track["external_urls"]["spotify"]
-            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-            save_user_history(user_id, track_info)
-            return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
-        else:
-            return "找不到相關的歌曲。"
+    tracks = get_recommendations(seed_tracks)
+    if tracks:
+        track = tracks[0]
+        song_name = track["name"]
+        artist_name = track["artists"][0]["name"]
+        track_url = track["external_urls"]["spotify"]
+        track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+        save_user_history(user_id, track_info)
+        return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
     else:
         return "無法推薦歌曲。"
 
@@ -137,27 +159,21 @@ def recommend_playlist(user_id):
     user_history = get_user_history(user_id)
 
     if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
+        seed_tracks = [track['id'] for track in random.sample(user_history, min(5, len(user_history)))]
     else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
+        seed_tracks = ["4NHQUGzhtTLFvgF5SZesLK"]  # Replace with a default track ID
 
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            playlist = []
-            for track in tracks:
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-            return "推薦播放清單：\n" + "\n\n".join(playlist)
-        else:
-            return "找不到相關的播放清單。"
+    tracks = get_recommendations(seed_tracks)
+    if tracks:
+        playlist = []
+        for track in tracks:
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            track_url = track["external_urls"]["spotify"]
+            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+            save_user_history(user_id, track_info)
+            playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
+        return "推薦播放清單：\n" + "\n\n".join(playlist)
     else:
         return "無法推薦播放清單。"
 

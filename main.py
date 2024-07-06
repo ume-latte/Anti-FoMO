@@ -35,29 +35,16 @@ def get_user_history(user_id):
 
 # 推薦歌曲和播放清單函數
 def recommend_song(user_id):
-    user_history = get_user_history(user_id)
-
-    if user_history:
-        recommended_track = random.choice(user_history)
-        song_name = recommended_track["name"]
-        artist_name = recommended_track["artist"]
-        track_url = recommended_track["url"]
-        return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
+    spotify_playlist_url = fdb.get('/spotify_playlist_url', None)
+    if spotify_playlist_url:
+        return f"推薦歌曲：您可以在這裡收聽歌曲：{spotify_playlist_url}"
     else:
         return "找不到相關的歌曲。"
 
 def recommend_playlist(user_id):
-    user_history = get_user_history(user_id)
-
-    if user_history:
-        random.shuffle(user_history)
-        playlist = []
-        for track in user_history[:10]:  # 推薦前 10 首歌曲
-            song_name = track["name"]
-            artist_name = track["artist"]
-            track_url = track["url"]
-            playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-        return "推薦播放清單：\n" + "\n\n".join(playlist)
+    spotify_playlist_url = fdb.get('/spotify_playlist_url', None)
+    if spotify_playlist_url:
+        return f"推薦播放清單：您可以在這裡收聽播放清單：{spotify_playlist_url}"
     else:
         return "找不到相關的播放清單。"
 

@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
@@ -106,7 +105,10 @@ def get_user_history(user_id):
 
 def recommend_song(user_id):
     try:
-        access_token = get_spotify_token()
+        access_token = get_spotify_token(user_id)
+        if not access_token:
+            return "請先連接你的Spotify帳戶。"
+
         headers = {
             "Authorization": f"Bearer {access_token}"
         }
@@ -140,37 +142,43 @@ def recommend_song(user_id):
         print(f"發生錯誤：{str(e)}")
         return "無法推薦歌曲。例外"
 
-
-
 def recommend_playlist(user_id):
-    access_token = get_spotify_token(user_id)
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_history = get_user_history(user_id)
+    try:
+        access_token = get_spotify_token(user_id)
+        if not access_token:
+            return "請先連接你的Spotify帳戶。"
 
-    if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
-    else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        user_history = get_user_history(user_id)
 
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            playlist = []
-            for track in tracks:
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-            return "推薦播放清單：\n" + "\n\n".join(playlist)
+        if user_history:
+            seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
+            recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
         else:
-            return "找不到相關的播放清單。"
-    else:
-        return "無法推薦播放清單。"
+            recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
+
+        response = requests.get(recommend_url, headers=headers)
+
+        if response.status_code == 200:
+            tracks = response.json().get("tracks", [])
+            if tracks:
+                playlist = []
+                for track in tracks:
+                    song_name = track["name"]
+                    artist_name = track["artists"][0]["name"]
+                    track_url = track["external_urls"]["spotify"]
+                    track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+                    save_user_history(user_id, track_info)
+                    playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
+                return "推薦播放清單：\n" + "\n\n".join(playlist)
+            else:
+                return "找不到相關的播放清單。"
+        else:
+            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
+            return "無法推薦播放清單。api"
+    except Exception as e:
+        print(f"發生錯誤：{str(e)}")
+        return "無法推薦播放清單。例外"
 
 # 主程式
 if __name__ == "__main__":

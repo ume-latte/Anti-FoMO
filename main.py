@@ -16,6 +16,8 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
+spotify_playlist_url = "https://open.spotify.com/playlist/7oJx24EcRU7fIVoTdqKscK"
+fdb.put('', '/spotify_playlist_url', spotify_playlist_url)
 
 # 儲存和使用訪問令牌
 def save_user_history(user_id, track_info):

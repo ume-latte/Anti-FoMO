@@ -64,24 +64,19 @@ def get_user_spotify_token(user_id):
     return token
 
 # 推薦歌曲函數
-def recommend_song(user_id):
-    token = get_user_spotify_token(user_id)
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
-    endpoint = 'https://api.spotify.com/v1/recommendations'
-    params = {
-        'limit': 1,
-        'seed_genres': 'pop',
-    }
-    response = requests.get(endpoint, headers=headers, params=params)
-
+def recommend_song():
+    url = "https://open.spotify.com/playlist/7oJx24EcRU7fIVoTdqKscK"
+    response = requests.get(url)
     if response.status_code == 200:
-        song_data = response.json()['tracks'][0]
-        song_name = song_data['name']
-        artist_name = song_data['artists'][0]['name']
-        return f"推薦給你的歌曲是：{song_name} - {artist_name}"
+        soup = BeautifulSoup(response.content, 'html.parser')
+        songs = soup.find_all('span', class_='track-name')
+        artists = soup.find_all('span', class_='artists')
+        if songs and artists:
+            song_name = songs[0].get_text()
+            artist_name = artists[0].get_text()
+            return f"推薦給你的歌曲是：{song_name} - {artist_name}"
+        else:
+            return "找不到推薦歌曲。"
     else:
         return "無法獲取推薦歌曲，請稍後重試。"
 

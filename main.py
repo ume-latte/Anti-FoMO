@@ -18,17 +18,15 @@ line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 
 # Spotify API 設定
-SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
 
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
-# 生成 Spotify 授權 URL
-auth_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
+# 生成 Spotify 認證管理器
+auth_manager = SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET)
 sp = spotipy.Spotify(auth_manager=auth_manager)
 
 # 交換授權碼為訪問令牌
@@ -54,6 +52,17 @@ def save_spotify_token(user_id, token):
 def get_spotify_token(user_id):
     return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
+# 推薦歌曲和播放清單函數
+def recommend_song():
+    recommendations = sp.recommendations(seed_genres=['pop', 'rock', 'classical'], limit=50)
+    track = random.choice(recommendations['tracks'])
+    return f"隨機推薦歌曲: {track['name']} by {', '.join([artist['name'] for artist in track['artists']])}"
+
+def recommend_playlist():
+    playlists = sp.search(q='year:2023', type='playlist', limit=50)
+    playlist = random.choice(playlists['playlists']['items'])
+    return f"隨機推薦播放清單: {playlist['name']} - {playlist['external_urls']['spotify']}"
+
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
@@ -72,11 +81,11 @@ async def handle_callback(request: Request):
             user_id = event.source.user_id
 
             if "推薦歌曲" in text:
-                reply_text = recommend_song(user_id)
+                reply_text = recommend_song()
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦播放清單" in text:
-                reply_text = recommend_playlist(user_id)
+                reply_text = recommend_playlist()
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     return 'OK'
@@ -90,28 +99,6 @@ async def spotify_callback(request: Request, code: str):
         return "Spotify authorization successful! You can now return to LINE and use Spotify features."
     else:
         return "Authorization failed, please try again."
-
-# 推薦歌曲和播放清單函數
-
-def recommend_song():
-    # 使用 Spotify 提供的推薦 API
-    recommendations = sp.recommendations(seed_genres=['pop', 'rock', 'classical'], limit=50)
-    track = random.choice(recommendations['tracks'])
-    return track
-
-def recommend_playlist():
-    # 搜尋流行的播放清單
-    playlists = sp.search(q='year:2023', type='playlist', limit=50)
-    playlist = random.choice(playlists['playlists']['items'])
-    return playlist
-
-# 獲取並顯示隨機歌曲
-random_track = recommend_song()
-print(f"隨機推薦歌曲: {random_track['name']} by {random_track['artists'][0]['name']}")
-
-# 獲取並顯示隨機播放清單
-random_playlist = recommend_playlist()
-print(f"隨機推薦播放清單: {random_playlist['name']} - {random_playlist['external_urls']['spotify']}")
 
 # 主程式
 if __name__ == "__main__":

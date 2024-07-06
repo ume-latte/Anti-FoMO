@@ -19,24 +19,37 @@ firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 推薦歌曲函數
-def recommend_song():
-    url = "https://open.spotify.com/playlist/7oJx24EcRU7fIVoTdqKscK"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    response = requests.get(url, headers=headers)
+def search_song(query):
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
+    response = requests.get(search_url, headers=headers)
+    
     if response.status_code == 200:
-        soup = BeautifulSoup(response.content, 'html.parser')
-        songs = soup.find_all('span', class_='track-name')
-        artists = soup.find_all('span', class_='artists-albums')
-        if songs and artists:
-            song_name = songs[0].get_text()
-            artist_name = artists[0].get_text()
-            return f"推薦給你的歌曲是：{song_name} - {artist_name}"
+        tracks = response.json()["tracks"]["items"]
+        if tracks:
+            track = tracks[0]
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            return f"推薦歌曲：{song_name} - {artist_name}"
         else:
-            return "找不到推薦歌曲。"
+            return "找不到相關的歌曲。"
     else:
-        return "無法獲取推薦歌曲，請稍後重試。"
+        return "無法搜索歌曲。"
+
+def recommend_playlist():
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    playlist_id = "37i9dQZF1DXcBWIGoYBM5M"
+    playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
+    response = requests.get(playlist_url, headers=headers)
+    
+    if response.status_code == 200:
+        playlist = response.json()
+        playlist_name = playlist["name"]
+        return f"推薦播放清單：{playlist_name}"
+    else:
+        return "無法推薦播放清單。"
 
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")

@@ -6,7 +6,6 @@ import requests
 import os
 import random
 from firebase import firebase
-from fastapi.responses import HTMLResponse, RedirectResponse
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
@@ -20,6 +19,7 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 # Spotify API 設定
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
 
 # Firebase 設定
 firebase_url = os.getenv('FIREBASE_URL')
@@ -39,7 +39,8 @@ def exchange_code_for_token(code):
         'client_id': SPOTIFY_CLIENT_ID,
         'client_secret': SPOTIFY_CLIENT_SECRET
     }
-    response = requests.post(token_url, data=payload)
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    response = requests.post(token_url, data=payload, headers=headers)
     if response.status_code == 200:
         return response.json()['access_token']
     else:
@@ -47,10 +48,10 @@ def exchange_code_for_token(code):
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
-    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
+    fdb.put(f'/spotify_tokens/{user_id}', 'token', token)
 
 def get_spotify_token(user_id):
-    return fdb.get(f'spotify_tokens/{user_id}', 'token')
+    return fdb.get(f'/spotify_tokens/{user_id}', 'token')
 
 # 推薦歌曲和播放清單函數
 def recommend_song():

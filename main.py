@@ -1,12 +1,9 @@
-
-
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
-import random
 from firebase import firebase
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -55,6 +52,58 @@ def save_spotify_token(user_id, token):
 def get_spotify_token(user_id):
     return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
+# 獲取使用者的 Spotify 訪問令牌
+def get_user_spotify_token(user_id):
+    token = get_spotify_token(user_id)
+    if not token:
+        raise HTTPException(status_code=400, detail="找不到 Spotify 令牌")
+    return token
+
+# 推薦歌曲函數
+def recommend_song(user_id):
+    token = get_user_spotify_token(user_id)
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    # 使用 Spotify API 獲取推薦的歌曲
+    endpoint = 'https://api.spotify.com/v1/recommendations'
+    params = {
+        'limit': 1,  # 限制推薦結果為一首歌曲
+        'seed_genres': 'pop',  # 指定推薦流派為 pop，你可以根據需要調整
+    }
+    response = requests.get(endpoint, headers=headers, params=params)
+
+    if response.status_code == 200:
+        song_data = response.json()['tracks'][0]
+        song_name = song_data['name']
+        artist_name = song_data['artists'][0]['name']
+        return f"推薦給你的歌曲是：{song_name} - {artist_name}"
+    else:
+        return "無法獲取推薦歌曲，請稍後重試。"
+
+# 推薦播放清單函數
+def recommend_playlist(user_id):
+    token = get_user_spotify_token(user_id)
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    # 使用 Spotify API 獲取推薦的播放清單
+    endpoint = 'https://api.spotify.com/v1/me/playlists'
+    params = {
+        'limit': 1,  # 限制推薦結果為一個播放清單
+    }
+    response = requests.get(endpoint, headers=headers, params=params)
+
+    if response.status_code == 200:
+        playlist_data = response.json()['items'][0]
+        playlist_name = playlist_data['name']
+        playlist_url = playlist_data['external_urls']['spotify']
+        return f"這是一個推薦的播放清單：{playlist_name}\n{playlist_url}"
+    else:
+        return "無法獲取推薦播放清單，請稍後重試。"
+
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
@@ -74,8 +123,8 @@ async def handle_callback(request: Request):
 
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
-                #reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
-                #await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
@@ -96,67 +145,6 @@ async def spotify_callback(request: Request, code: str):
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
-
-# 推薦歌曲
-  def recommend_song(user_id):
-    access_token = get_spotify_access_token()
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_history = get_user_history(user_id)
-    
-    if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
-    else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
-
-    response = requests.get(recommend_url, headers=headers)
-    
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            track = tracks[0]
-            song_name = track["name"]
-            artist_name = track["artists"][0]["name"]
-            track_url = track["external_urls"]["spotify"]
-            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-            save_user_history(user_id, track_info)
-            return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
-        else:
-            return "找不到相關的歌曲。"
-    else:
-        return "無法推薦歌曲。"
-
-
-
-def recommend_playlist(user_id):
-    access_token = get_spotify_token(user_id)
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_history = get_user_history(user_id)
-
-    if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
-    else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
-
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            playlist = []
-            for track in tracks:
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-            return "推薦播放清單：\n" + "\n\n".join(playlist)
-        else:
-            return "找不到相關的播放清單。"
-    else:
-        return "無法推薦播放清單。"
 
 # 主程式
 if __name__ == "__main__":

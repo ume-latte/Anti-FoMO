@@ -7,6 +7,7 @@ import os
 import random
 from firebase import firebase
 from fastapi.responses import HTMLResponse, RedirectResponse
+from urllib.parse import urlencode
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -26,8 +27,15 @@ firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 生成 Spotify 授權 URL
-def generate_spotify_auth_url():
-    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
+def generate_spotify_auth_url(user_id):
+    params = {
+        'client_id': SPOTIFY_CLIENT_ID,
+        'response_type': 'code',
+        'redirect_uri': SPOTIFY_REDIRECT_URI,
+        'scope': 'user-read-private user-read-email',
+        'state': user_id  # 傳遞用戶ID
+    }
+    auth_url = f"{SPOTIFY_AUTH_URL}?{urlencode(params)}"
     return auth_url
 
 # 交換授權碼為訪問令牌
@@ -71,7 +79,7 @@ async def handle_callback(request: Request):
             user_id = event.source.user_id
 
             if "連接spotify" in text:
-                auth_url = generate_spotify_auth_url()
+                auth_url = generate_spotify_auth_url(user_id)
                 reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
@@ -87,11 +95,11 @@ async def handle_callback(request: Request):
 
 # 處理 Spotify 的回調請求
 @app.get("/callback")
-async def spotify_callback(request: Request, code: str):
-    if code:
+async def spotify_callback(request: Request, code: str, state: str):
+    if code and state:
         try:
             token = exchange_code_for_token(code)
-            user_id = "some_user_id"  # 在這裡添加用戶識別邏輯
+            user_id = state  # 使用回調中的狀態參數來識別用戶
             save_spotify_token(user_id, token)
             return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
         except HTTPException as e:

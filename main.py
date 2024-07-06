@@ -4,9 +4,7 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
-import random
 from firebase_admin import credentials, db, initialize_app
-from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -19,7 +17,7 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
 
 # Firebase 設定
 cred = credentials.Certificate('/path/to/serviceAccountKey.json')  # 替換為你的服務帳戶金鑰路徑
@@ -125,5 +123,5 @@ def recommend_playlist_to_firebase(user_id):
 # 主程式
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get('PORT', default=8080))
+    port = int(os.environ.get('PORT', 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)

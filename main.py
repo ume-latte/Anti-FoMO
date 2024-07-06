@@ -80,10 +80,6 @@ async def handle_callback(request: Request):
                 reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-            elif "推薦播放清單" in text:
-                reply_text = recommend_playlist(user_id)
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-
     return 'OK'
 
 # 處理 Spotify 的回調請求
@@ -96,7 +92,7 @@ async def spotify_callback(request: Request, code: str):
     else:
         return "授權失敗，請重試。"
 
-def recommend_playlist(user_id):
+def recommend_song(user_id):
     try:
         access_token = get_spotify_token(user_id)
         headers = {"Authorization": f"Bearer {access_token}"}

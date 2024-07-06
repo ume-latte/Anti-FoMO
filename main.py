@@ -5,6 +5,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
 from firebase import firebase
+import random
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -63,30 +64,36 @@ def get_user_spotify_token(user_id):
     return token
 
 # 推薦歌曲函數
-def search_song(query):
-    access_token = get_spotify_access_token()
-    headers = {"Authorization": f"Bearer {access_token}"}
-    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
-    response = requests.get(search_url, headers=headers)
-    
+def recommend_song(user_id):
+    token = get_user_spotify_token(user_id)
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    endpoint = 'https://api.spotify.com/v1/recommendations'
+    params = {
+        'limit': 1,
+        'seed_genres': 'pop',
+    }
+    response = requests.get(endpoint, headers=headers, params=params)
+
     if response.status_code == 200:
-        tracks = response.json()["tracks"]["items"]
-        if tracks:
-            track = tracks[0]
-            song_name = track["name"]
-            artist_name = track["artists"][0]["name"]
-            return f"推薦歌曲：{song_name} - {artist_name}"
-        else:
-            return "找不到相關的歌曲。"
+        song_data = response.json()['tracks'][0]
+        song_name = song_data['name']
+        artist_name = song_data['artists'][0]['name']
+        return f"推薦給你的歌曲是：{song_name} - {artist_name}"
     else:
-        return "無法搜索歌曲。"
+        return "無法獲取推薦歌曲，請稍後重試。"
 
 # 推薦播放清單函數
 def recommend_playlist(user_id):
-    access_token = get_spotify_access_token()
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_history = get_user_history(user_id)
-    
+    token = get_user_spotify_token(user_id)
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    user_history = get_user_history(user_id)  # 假設此函數存在，用於獲取用戶的聽歌歷史
+
     if user_history:
         seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
         recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
@@ -94,7 +101,7 @@ def recommend_playlist(user_id):
         recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
 
     response = requests.get(recommend_url, headers=headers)
-    
+
     if response.status_code == 200:
         tracks = response.json()["tracks"]
         if tracks:
@@ -104,7 +111,7 @@ def recommend_playlist(user_id):
                 artist_name = track["artists"][0]["name"]
                 track_url = track["external_urls"]["spotify"]
                 track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
+                save_user_history(user_id, track_info)  # 假設此函數存在，用於保存用戶的聽歌歷史
                 playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
             return "推薦播放清單：\n" + "\n\n".join(playlist)
         else:
@@ -128,10 +135,12 @@ async def handle_callback(request: Request):
         if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
             text = event.message.text.lower()
             user_id = event.source.user_id
-            
-            if "推薦歌曲" in text:
-                reply_text = recommend_song(user_id)
+
+            if "連接spotify" in text:
+                auth_url = generate_spotify_auth_url()
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
             elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
@@ -151,10 +160,11 @@ async def spotify_callback(request: Request, code: str):
         save_spotify_token(user_id, token)
         return "Spotify authorization successful! You can now return to LINE and use Spotify features."
     else:
-        return "授權失敗，請重試。"
+        return "Authorization failed, please try again."
 
 # 主程式
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get('PORT', default=8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
+

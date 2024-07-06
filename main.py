@@ -7,6 +7,8 @@ import os
 import random
 from firebase import firebase
 from fastapi.responses import HTMLResponse, RedirectResponse
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -26,9 +28,8 @@ firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 生成 Spotify 授權 URL
-def generate_spotify_auth_url():
-    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
-    return auth_url
+auth_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
+sp = spotipy.Spotify(auth_manager=auth_manager)
 
 # 交換授權碼為訪問令牌
 def exchange_code_for_token(code):
@@ -91,80 +92,26 @@ async def spotify_callback(request: Request, code: str):
         return "Authorization failed, please try again."
 
 # 推薦歌曲和播放清單函數
-def get_user_history(user_id):
-    user_history_path = f'history/{user_id}'
-    history = fdb.get(user_history_path, None)
-    if history is None:
-        history = []
-    return history
 
-def recommend_song(user_id):
-    try:
-        access_token = get_spotify_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
+def recommend_song():
+    # 使用 Spotify 提供的推薦 API
+    recommendations = sp.recommendations(seed_genres=['pop', 'rock', 'classical'], limit=50)
+    track = random.choice(recommendations['tracks'])
+    return track
 
-        user_history = get_user_history(user_id)
+def recommend_playlist():
+    # 搜尋流行的播放清單
+    playlists = sp.search(q='year:2023', type='playlist', limit=50)
+    playlist = random.choice(playlists['playlists']['items'])
+    return playlist
 
-        if user_history:
-            seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        else:
-            seed_tracks = "7oJx24EcRU7fIVoTdqKscK"  # Example track ID
+# 獲取並顯示隨機歌曲
+random_track = recommend_song()
+print(f"隨機推薦歌曲: {random_track['name']} by {random_track['artists'][0]['name']}")
 
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
-        response = requests.get(recommend_url, headers=headers)
-
-        if response.status_code == 200:
-            tracks = response.json().get("tracks", [])
-            if tracks:
-                track = tracks[0]
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
-            else:
-                return "找不到相關的歌曲。"
-        else:
-            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法推薦歌曲。api"
-    except Exception as e:
-        print(f"發生錯誤：{str(e)}")
-        return "無法推薦歌曲。例外"
-
-
-
-def recommend_playlist(user_id):
-    access_token = get_spotify_token(user_id)
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_history = get_user_history(user_id)
-
-    if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
-    else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
-
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json()["tracks"]
-        if tracks:
-            playlist = []
-            for track in tracks:
-                song_name = track["name"]
-                artist_name = track["artists"][0]["name"]
-                track_url = track["external_urls"]["spotify"]
-                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                save_user_history(user_id, track_info)
-                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-            return "推薦播放清單：\n" + "\n\n".join(playlist)
-        else:
-            return "找不到相關的播放清單。"
-    else:
-        return "無法推薦播放清單。"
+# 獲取並顯示隨機播放清單
+random_playlist = recommend_playlist()
+print(f"隨機推薦播放清單: {random_playlist['name']} - {random_playlist['external_urls']['spotify']}")
 
 # 主程式
 if __name__ == "__main__":

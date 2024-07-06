@@ -105,35 +105,41 @@ def get_user_history(user_id):
     return history
 
 def recommend_song(user_id):
-    access_token = get_spotify_token()
-    headers = {
-        "Authorization": f"Bearer {access_token}"
-    }
+    try:
+        access_token = get_spotify_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
 
-    user_history = get_user_history(user_id)
+        user_history = get_user_history(user_id)
 
-    if user_history:
-        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-    else:
-        seed_tracks = "7ixxyJJJKZdo8bsdWwkaB6"  # Example track ID
-
-    recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
-    response = requests.get(recommend_url, headers=headers)
-
-    if response.status_code == 200:
-        tracks = response.json().get("tracks", [])
-        if tracks:
-            track = tracks[0]
-            song_name = track["name"]
-            artist_name = track["artists"][0]["name"]
-            track_url = track["external_urls"]["spotify"]
-            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-            save_user_history(user_id, track_info)
-            return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
+        if user_history:
+            seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
         else:
-            return "找不到相關的歌曲。"
-    else:
+            seed_tracks = "7ixxyJJJKZdo8bsdWwkaB6"  # Example track ID
+
+        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
+        response = requests.get(recommend_url, headers=headers)
+
+        if response.status_code == 200:
+            tracks = response.json().get("tracks", [])
+            if tracks:
+                track = tracks[0]
+                song_name = track["name"]
+                artist_name = track["artists"][0]["name"]
+                track_url = track["external_urls"]["spotify"]
+                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+                save_user_history(user_id, track_info)
+                return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
+            else:
+                return "找不到相關的歌曲。"
+        else:
+            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
+            return "無法推薦歌曲。"
+    except Exception as e:
+        print(f"發生錯誤：{str(e)}")
         return "無法推薦歌曲。"
+
 
 
 def recommend_playlist(user_id):

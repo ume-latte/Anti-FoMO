@@ -105,20 +105,23 @@ def get_user_history(user_id):
     return history
 
 def recommend_song(user_id):
-    access_token = get_spotify_token(user_id)
-    headers = {"Authorization": f"Bearer {access_token}"}
+    access_token = get_spotify_token()
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
     user_history = get_user_history(user_id)
 
     if user_history:
         seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
     else:
-        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
+        seed_tracks = "7ixxyJJJKZdo8bsdWwkaB6"  # Example track ID
 
+    recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
     response = requests.get(recommend_url, headers=headers)
 
     if response.status_code == 200:
-        tracks = response.json()["tracks"]
+        tracks = response.json().get("tracks", [])
         if tracks:
             track = tracks[0]
             song_name = track["name"]
@@ -131,6 +134,7 @@ def recommend_song(user_id):
             return "找不到相關的歌曲。"
     else:
         return "無法推薦歌曲。"
+
 
 def recommend_playlist(user_id):
     access_token = get_spotify_token(user_id)

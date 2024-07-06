@@ -53,11 +53,6 @@ def save_spotify_token(user_id, token):
 def get_spotify_token(user_id):
     return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
-# 保存使用者歌曲歷史
-def save_user_history(user_id, track_info):
-    history_path = f'history/{user_id}'
-    fdb.post(history_path, track_info)
-
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
@@ -95,15 +90,22 @@ async def handle_callback(request: Request):
 async def spotify_callback(request: Request, code: str):
     if code:
         token = exchange_code_for_token(code)
-        save_spotify_token(user_id, token)  # 假設在這裡保存訪問令牌，關聯到用戶
+        # 在這裡保存訪問令牌，關聯到用戶
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
 
-# 推薦歌曲函數
+# 推薦歌曲和播放清單函數
+def get_user_history(user_id):
+    user_history_path = f'history/{user_id}'
+    history = fdb.get(user_history_path, None)
+    if history is None:
+        history = []
+    return history
+
 def recommend_song(user_id):
     try:
-        access_token = get_spotify_token(user_id)
+        access_token = get_spotify_token()
         headers = {
             "Authorization": f"Bearer {access_token}"
         }
@@ -137,44 +139,37 @@ def recommend_song(user_id):
         print(f"發生錯誤：{str(e)}")
         return "無法推薦歌曲。例外"
 
-# 推薦播放清單函數
+
+
 def recommend_playlist(user_id):
-    try:
-        access_token = get_spotify_token(user_id)
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
+    access_token = get_spotify_token(user_id)
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_history = get_user_history(user_id)
 
-        user_history = get_user_history(user_id)
-
-        if user_history:
-            seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
-        else:
-            seed_tracks = ""
-
+    if user_history:
+        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
         recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=10"
-        response = requests.get(recommend_url, headers=headers)
+    else:
+        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=10"
 
-        if response.status_code == 200:
-            tracks = response.json()["tracks"]
-            if tracks:
-                playlist = []
-                for track in tracks:
-                    song_name = track["name"]
-                    artist_name = track["artists"][0]["name"]
-                    track_url = track["external_urls"]["spotify"]
-                    track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
-                    save_user_history(user_id, track_info)
-                    playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-                return "推薦播放清單：\n" + "\n\n".join(playlist)
-            else:
-                return "找不到相關的播放清單。"
+    response = requests.get(recommend_url, headers=headers)
+
+    if response.status_code == 200:
+        tracks = response.json()["tracks"]
+        if tracks:
+            playlist = []
+            for track in tracks:
+                song_name = track["name"]
+                artist_name = track["artists"][0]["name"]
+                track_url = track["external_urls"]["spotify"]
+                track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+                save_user_history(user_id, track_info)
+                playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
+            return "推薦播放清單：\n" + "\n\n".join(playlist)
         else:
-            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法推薦播放清單。api"
-    except Exception as e:
-        print(f"發生錯誤：{str(e)}")
-        return "無法推薦播放清單。例外"
+            return "找不到相關的播放清單。"
+    else:
+        return "無法推薦播放清單。"
 
 # 主程式
 if __name__ == "__main__":

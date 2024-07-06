@@ -181,3 +181,56 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get('PORT', default=8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+import unittest
+from unittest.mock import patch, MagicMock
+from your_module import recommend_song  # 假設你的模組中包含 recommend_song 函數
+
+class TestRecommendSong(unittest.TestCase):
+
+    @patch('your_module.get_spotify_token')
+    @patch('requests.get')
+    def test_recommend_song_success(self, mock_requests_get, mock_get_spotify_token):
+        # 模擬 Spotify 令牌
+        mock_get_spotify_token.return_value = 'mock_access_token'
+
+        # 模擬 requests.get 的回應
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "tracks": [
+                {
+                    "name": "Mock Song",
+                    "artists": [{"name": "Mock Artist"}],
+                    "external_urls": {"spotify": "https://example.com"}
+                }
+            ]
+        }
+        mock_requests_get.return_value = mock_response
+
+        # 呼叫 recommend_song 函數，這裡的 user_id 可以是任意有效的使用者 ID
+        result = recommend_song('mock_user_id')
+
+        # 斷言結果是否如預期
+        self.assertIn("推薦歌曲：Mock Song - Mock Artist", result)
+
+    @patch('your_module.get_spotify_token')
+    @patch('requests.get')
+    def test_recommend_song_failure(self, mock_requests_get, mock_get_spotify_token):
+        # 模擬 Spotify 令牌
+        mock_get_spotify_token.return_value = 'mock_access_token'
+
+        # 模擬 requests.get 的回應
+        mock_response = MagicMock()
+        mock_response.status_code = 500  # 假設這裡設置一個無效的狀態碼
+        mock_requests_get.return_value = mock_response
+
+        # 呼叫 recommend_song 函數，這裡的 user_id 可以是任意有效的使用者 ID
+        result = recommend_song('mock_user_id')
+
+        # 斷言結果是否如預期
+        self.assertEqual(result, "無法推薦歌曲。")
+
+if __name__ == '__main__':
+    unittest.main()
+

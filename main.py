@@ -1,10 +1,13 @@
+
 from fastapi import FastAPI, Request, HTTPException
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
-from firebase_admin import credentials, db, initialize_app
+import random
+from firebase import firebase
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -17,12 +20,11 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
-SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
+SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
 
 # Firebase 設定
-cred = credentials.Certificate('/path/to/serviceAccountKey.json')  # 替換為你的服務帳戶金鑰路徑
-initialize_app(cred)
-ref = db.reference('spotify_playlists')
+firebase_url = os.getenv('FIREBASE_URL')
+fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 生成 Spotify 授權 URL
 def generate_spotify_auth_url():
@@ -47,11 +49,10 @@ def exchange_code_for_token(code):
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
-    ref.child(f'spotify_tokens/{user_id}').set({'token': token})
+    fdb.put(f'spotify_tokens/{user_id}', 'token', token)
 
 def get_spotify_token(user_id):
-    snapshot = ref.child(f'spotify_tokens/{user_id}').get()
-    return snapshot.get('token') if snapshot else None
+    return fdb.get(f'spotify_tokens/{user_id}', 'token')
 
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
@@ -72,56 +73,63 @@ async def handle_callback(request: Request):
 
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的 Spotify 帳戶: {auth_url}"
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
-                reply_text = recommend_playlist_to_firebase(user_id)
+                reply_text = recommend_song(user_id)
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+
+            elif "推薦播放清單" in text:
+                reply_text = recommend_playlist(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     return 'OK'
 
-# 推薦歌曲函數，將歌單歌曲存入 Firebase
-def recommend_playlist_to_firebase(user_id):
-    try:
-        playlist_id = '7oJx24EcRU7fIVoTdqKscK'  # Spotify 歌單 ID
-        access_token = get_spotify_token(user_id)
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
+# 處理 Spotify 的回調請求
+@app.get("/callback")
+async def spotify_callback(request: Request, code: str):
+    if code:
+        token = exchange_code_for_token(code)
+        # 在這裡保存訪問令牌，關聯到用戶
+        return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
+    else:
+        return "授權失敗，請重試。"
 
-        playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
-        response = requests.get(playlist_url, headers=headers)
+def recommend_playlist(user_id):
+    try:
+        access_token = get_spotify_token(user_id)
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        # 指定要推薦的播放清單的 Spotify URI
+        playlist_uri = "spotify:playlist:7oJx24EcRU7fIVoTdqKscK"
+
+        recommend_url = f"https://api.spotify.com/v1/playlists/{playlist_uri}/tracks"
+        response = requests.get(recommend_url, headers=headers)
 
         if response.status_code == 200:
-            tracks = response.json().get("items", [])
+            tracks = response.json()["items"]
             if tracks:
-                playlist_data = {
-                    'name': 'Recommended Playlist',  # 歌單名稱
-                    'tracks': []
-                }
-                for track in tracks:
-                    track_info = {
-                        'id': track['track']['id'],
-                        'name': track['track']['name'],
-                        'artist': track['track']['artists'][0]['name'],
-                        'uri': track['track']['external_urls']['spotify']
-                    }
-                    playlist_data['tracks'].append(track_info)
-
-                ref.child(playlist_id).set(playlist_data)
-                return "已成功將推薦歌單存入 Firebase."
+                playlist = []
+                for item in tracks:
+                    track = item["track"]
+                    song_name = track["name"]
+                    artist_name = track["artists"][0]["name"]
+                    track_url = track["external_urls"]["spotify"]
+                    playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
+                return "推薦播放清單：\n\n" + "\n\n".join(playlist)
             else:
-                return "找不到歌曲清單。"
+                return "播放清單中找不到歌曲。"
         else:
-            print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法獲取歌曲清單。"
+            print(f"從 Spotify 獲取播放清單失敗。狀態碼：{response.status_code}，回應：{response.text}")
+            return "無法推薦播放清單。API 錯誤。"
     except Exception as e:
         print(f"發生錯誤：{str(e)}")
-        return "處理過程中出現錯誤。"
+        return "無法推薦播放清單。發生例外。"
+
 
 # 主程式
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', default=8080))
     uvicorn.run(app, host="0.0.0.0", port=port)

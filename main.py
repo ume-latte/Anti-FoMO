@@ -86,8 +86,11 @@ async def handle_callback(request: Request):
         if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
             text = event.message.text.lower()
             user_id = event.source.user_id
-
-            if "推薦歌曲" in text:
+            
+            if "連接spotify" in text:
+                auth_url = generate_spotify_auth_url()
+            
+            elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 

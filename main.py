@@ -135,10 +135,10 @@ def recommend_song(user_id):
                 return "找不到相關的歌曲。"
         else:
             print(f"Spotify API 請求失敗，狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法推薦歌曲。"
+            return "無法推薦歌曲。api"
     except Exception as e:
         print(f"發生錯誤：{str(e)}")
-        return "無法推薦歌曲。"
+        return "無法推薦歌曲。例外"
 
 
 

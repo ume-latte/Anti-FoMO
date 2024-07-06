@@ -22,7 +22,7 @@ SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
 SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')  # 從環境變量中讀取
 
 # Firebase 設定
-cred = credentials.Certificate('/path/to/serviceAccountKey.json')
+cred = credentials.Certificate('/path/to/serviceAccountKey.json')  # 替換為你的服務帳戶金鑰路徑
 initialize_app(cred)
 ref = db.reference('spotify_playlists')
 
@@ -49,12 +49,11 @@ def exchange_code_for_token(code):
 
 # 儲存和使用訪問令牌
 def save_spotify_token(user_id, token):
-    ref = db.reference(f'spotify_tokens/{user_id}')
-    ref.set({'token': token})
+    ref.child(f'spotify_tokens/{user_id}').set({'token': token})
 
 def get_spotify_token(user_id):
-    ref = db.reference(f'spotify_tokens/{user_id}')
-    return ref.get()
+    snapshot = ref.child(f'spotify_tokens/{user_id}').get()
+    return snapshot.get('token') if snapshot else None
 
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
@@ -79,16 +78,16 @@ async def handle_callback(request: Request):
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
-                reply_text = recommend_playlist_to_firebase()
+                reply_text = recommend_playlist_to_firebase(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     return 'OK'
 
 # 推薦歌曲函數，將歌單歌曲存入 Firebase
-def recommend_playlist_to_firebase():
+def recommend_playlist_to_firebase(user_id):
     try:
         playlist_id = '7oJx24EcRU7fIVoTdqKscK'  # Spotify 歌單 ID
-        access_token = get_spotify_token('user_id')['token']  # 替換 'user_id' 為實際用戶 ID
+        access_token = get_spotify_token(user_id)
         headers = {
             "Authorization": f"Bearer {access_token}"
         }

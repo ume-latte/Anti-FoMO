@@ -35,11 +35,11 @@ async def handle_callback(request: Request):
 
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}，連結後你可以輸入「推薦歌曲」，來獲得好歌推薦！"
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}，連結後你可以輸入「推薦歌曲」、「推薦撥放清單」，來獲得好歌推薦！"
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
-                reply_text = search_song("FoMO")
+                reply_text = search_song(query)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
                 
             elif "推薦播放清單" in text:
@@ -78,11 +78,10 @@ def search_song(query):
     else:
         return "無法搜索歌曲。"
 
-# 推薦播放清單
 def recommend_playlist():
     access_token = get_spotify_access_token()
     headers = {"Authorization": f"Bearer {access_token}"}
-    playlist_id = "7oJx24EcRU7fIVoTdqKscK"
+    playlist_id = "37i9dQZF1DXcBWIGoYBM5M"
     playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
     response = requests.get(playlist_url, headers=headers)
     
@@ -92,14 +91,6 @@ def recommend_playlist():
         return f"推薦播放清單：{playlist_name}"
     else:
         return "無法推薦播放清單。"
-
-# 獲取 Spotify 授權 token 的函式（需要根據你的實際情況來實現）
-def get_spotify_access_token():
-    # 此處需要根據實際情況實現獲取 Spotify 授權 token 的邏輯
-    # 可以使用 OAuth2.0 進行授權，獲取 access token
-    # 這裡假設你已經有了一個能夠獲取 access token 的方法
-    # 如果你還沒有實現這部分，需要先完成這個部分的程式碼
-    return "your_access_token_here"
 
 # 主程式入口
 if __name__ == "__main__":

@@ -64,25 +64,32 @@ def get_user_spotify_token(user_id):
 
 # 推薦歌曲函數
 def recommend_song(user_id):
-    token = get_user_spotify_token(user_id)
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
-    endpoint = 'https://api.spotify.com/v1/recommendations'
-    params = {
-        'limit': 1,
-        'seed_genres': 'pop',
-    }
-    response = requests.get(endpoint, headers=headers, params=params)
-
-    if response.status_code == 200:
-        song_data = response.json()['tracks'][0]
-        song_name = song_data['name']
-        artist_name = song_data['artists'][0]['name']
-        return f"推薦給你的歌曲是：{song_name} - {artist_name}"
+    access_token = get_spotify_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_history = get_user_history(user_id)
+    
+    if user_history:
+        seed_tracks = ','.join([track['id'] for track in random.sample(user_history, min(5, len(user_history)))])
+        recommend_url = f"https://api.spotify.com/v1/recommendations?seed_tracks={seed_tracks}&limit=1"
     else:
-        return "無法獲取推薦歌曲，請稍後重試。"
+        recommend_url = "https://api.spotify.com/v1/recommendations?seed_genres=pop&limit=1"
+
+    response = requests.get(recommend_url, headers=headers)
+    
+    if response.status_code == 200:
+        tracks = response.json()["tracks"]
+        if tracks:
+            track = tracks[0]
+            song_name = track["name"]
+            artist_name = track["artists"][0]["name"]
+            track_url = track["external_urls"]["spotify"]
+            track_info = {'id': track['id'], 'name': song_name, 'artist': artist_name, 'url': track_url}
+            save_user_history(user_id, track_info)
+            return f"推薦歌曲：{song_name} - {artist_name}\n[點此收聽]({track_url})"
+        else:
+            return "找不到相關的歌曲。"
+    else:
+        return "無法推薦歌曲。"
 
 # 推薦播放清單函數
 def recommend_playlist(user_id):
@@ -121,8 +128,11 @@ async def handle_callback(request: Request):
         if isinstance(event, MessageEvent) and isinstance(event.message, TextMessage):
             text = event.message.text.lower()
             user_id = event.source.user_id
-
+            
             if "推薦歌曲" in text:
+                reply_text = recommend_song(user_id)
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            elif "推薦歌曲" in text:
                 reply_text = recommend_song(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 

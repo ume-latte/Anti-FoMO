@@ -8,6 +8,7 @@ import os
 import random
 from firebase import firebase
 from fastapi.responses import HTMLResponse, RedirectResponse
+from bs4 import BeautifulSoup
 
 # 初始化 FastAPI 應用
 app = FastAPI()
@@ -73,7 +74,7 @@ async def handle_callback(request: Request):
 
             if "連接spotify" in text:
                 auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}，連結後你可以輸入「推薦歌曲」，來獲得好歌推薦！"
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
             elif "推薦歌曲" in text:
@@ -91,37 +92,34 @@ async def spotify_callback(request: Request, code: str):
         return "Spotify 授權成功！你現在可以回到 LINE 並使用 Spotify 功能。"
     else:
         return "授權失敗，請重試。"
-
-def recommend_song(user_id):
-    try:
-        access_token = get_spotify_token(user_id)
-        headers = {"Authorization": f"Bearer {access_token}"}
         
-        # 指定要推薦的播放清單的 Spotify URI
-        playlist_uri = "spotify:playlist:7oJx24EcRU7fIVoTdqKscK"
+def recommend_song(user_id):
+    # 發送GET請求來獲取網頁內容
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    response = requests.get(user_id, headers=headers)
+    
+    # 使用BeautifulSoup解析HTML
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # 找到所有歌曲元素，通常在class為'tracklist-name'的元素中
+    song_elements = soup.find_all('div', class_='tracklist-name')
+    
+    if song_elements:
+        # 從歌曲元素列表中隨機選擇一首歌曲
+        random_song_element = random.choice(song_elements)
+        return random_song_element.text.strip()
+    else:
+        return '未找到歌曲'
 
-        recommend_url = f"https://api.spotify.com/v1/playlists/{playlist_uri}/tracks"
-        response = requests.get(recommend_url, headers=headers)
+# 要爬取的Spotify播放列表URL
+playlist_url = 'https://open.spotify.com/playlist/7oJx24EcRU7fIVoTdqKscK'
 
-        if response.status_code == 200:
-            tracks = response.json()["items"]
-            if tracks:
-                playlist = []
-                for item in tracks:
-                    track = item["track"]
-                    song_name = track["name"]
-                    artist_name = track["artists"][0]["name"]
-                    track_url = track["external_urls"]["spotify"]
-                    playlist.append(f"{song_name} - {artist_name}\n[點此收聽]({track_url})")
-                return "推薦播放清單：\n\n" + "\n\n".join(playlist)
-            else:
-                return "播放清單中找不到歌曲。"
-        else:
-            print(f"從 Spotify 獲取播放清單失敗。狀態碼：{response.status_code}，回應：{response.text}")
-            return "無法推薦播放清單。API 錯誤。"
-    except Exception as e:
-        print(f"發生錯誤：{str(e)}")
-        return "無法推薦播放清單。發生例外。"
+# 呼叫函數並打印隨機選擇的歌曲
+random_song = recommend_song(user_id)
+print(f'推薦的歌曲: {random_song}')
+
 
 
 # 主程式

@@ -5,6 +5,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
 import random
 import logging
+import requests
 from firebase import firebase
 
 # 初始化 FastAPI 應用
@@ -28,6 +29,31 @@ def generate_spotify_auth_url():
     SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
     auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
     return auth_url
+
+# 定義 exchange_code_for_token 函數
+def exchange_code_for_token(code):
+    SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+    SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+    SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
+    
+    token_url = "https://accounts.spotify.com/api/token"
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    data = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": SPOTIFY_REDIRECT_URI,
+        "client_id": SPOTIFY_CLIENT_ID,
+        "client_secret": SPOTIFY_CLIENT_SECRET
+    }
+    
+    response = requests.post(token_url, headers=headers, data=data)
+    if response.status_code == 200:
+        return response.json().get('access_token')
+    else:
+        logging.error(f"Failed to exchange code for token: {response.text}")
+        return None
 
 spotify_tracks = [
     "https://open.spotify.com/track/3E5XrOtqMAs7p2wKhwgOjf",
@@ -126,8 +152,11 @@ async def spotify_callback(request: Request, code: str):
     try:
         if code:
             token = exchange_code_for_token(code)
-            # 在這裡保存訪問令牌，關聯到用戶
-            return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
+            if token:
+                # 在這裡保存訪問令牌，關聯到用戶
+                return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
+            else:
+                return "Authorization failed, please try again."
         else:
             return "Authorization failed, please try again."
     except Exception as e:

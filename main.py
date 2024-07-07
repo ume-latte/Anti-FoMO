@@ -165,7 +165,7 @@ async def handle_callback(request: Request):
                 response = model.generate_content(
                     f'請用繁體中文回答以下問題 ，{text}')
                 reply_msg = response.text
-            elif text_condition == 'F':  # Handling recommendation of song
+            elif text_condition == '推薦歌曲':  # Handling recommendation of song
                 recommendations = spotify.recommendations(seed_genres=['pop'], limit=1)
                 if recommendations and 'tracks' in recommendations:
                     track = recommendations['tracks'][0]

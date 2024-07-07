@@ -4,6 +4,8 @@ import re
 import sys
 from dotenv import load_dotenv
 
+load_dotenv()
+
 if os.getenv('API_ENV') != 'production':
     load_dotenv()
 
@@ -27,7 +29,7 @@ import requests
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
-logging.basicConfig(level=os.getenv('LOG', 'WARNING'))
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -53,6 +55,10 @@ from utils import check_image_quake, check_location_in_message, get_current_weat
 
 firebase_url = os.getenv('FIREBASE_URL')
 gemini_key = os.getenv('GEMINI_API_KEY')
+
+if not firebase_url:
+    logger.error('Specify FIREBASE_URL as environment variable.')
+    sys.exit(1)
 
 # Initialize the Gemini Pro API
 genai.configure(api_key=gemini_key)

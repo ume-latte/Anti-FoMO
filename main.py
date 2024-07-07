@@ -130,7 +130,7 @@ async def handle_callback(request: Request):
             user_id = event.source.user_id
             
             try:
-                if "連接spotify" in text:
+                if "su3g4u dk vu ej8 " in text:
                     auth_url = generate_spotify_auth_url()
                     reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
                     await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))

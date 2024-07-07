@@ -17,7 +17,12 @@ parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET'))
 firebase_url = os.getenv('FIREBASE_URL')
 fdb = firebase.FirebaseApplication(firebase_url, None)
 
+# 生成 Spotify 授權 URL
+def generate_spotify_auth_url():
+    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
+    return auth_url
 spotify_tracks = [
+    
     "https://open.spotify.com/track/3E5XrOtqMAs7p2wKhwgOjf",
     "https://open.spotify.com/track/3RauEVgRgj1IuWdJ9fDs70",
     "https://open.spotify.com/track/1dNIEtp7AY3oDAKCGg2XkH",

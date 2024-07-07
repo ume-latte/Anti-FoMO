@@ -104,7 +104,15 @@ async def handle_callback(request: Request):
             elif "推薦播放清單" in text:
                 reply_text = recommend_playlist(user_id)
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-
+# 處理 Spotify 的回調請求
+@app.get("/callback")
+async def spotify_callback(request: Request, code: str):
+    if code:
+        token = exchange_code_for_token(code)
+        # 在這裡保存訪問令牌，關聯到用戶
+        return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
+    else:
+        return "Authorization failed, please try again."
     return 'OK'
 
 # 主程式

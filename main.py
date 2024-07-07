@@ -4,10 +4,14 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import os
 import random
+import logging
 from firebase import firebase
 
 # 初始化 FastAPI 應用
 app = FastAPI()
+
+# 初始化日誌
+logging.basicConfig(level=logging.INFO)
 
 # 初始化 LINE Bot API 和 Webhook Parser
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN'))
@@ -19,10 +23,13 @@ fdb = firebase.FirebaseApplication(firebase_url, None)
 
 # 生成 Spotify 授權 URL
 def generate_spotify_auth_url():
+    SPOTIFY_AUTH_URL = os.getenv('SPOTIFY_AUTH_URL')
+    SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+    SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
     auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
     return auth_url
+
 spotify_tracks = [
-    
     "https://open.spotify.com/track/3E5XrOtqMAs7p2wKhwgOjf",
     "https://open.spotify.com/track/3RauEVgRgj1IuWdJ9fDs70",
     "https://open.spotify.com/track/1dNIEtp7AY3oDAKCGg2XkH",
@@ -81,10 +88,14 @@ async def handle_callback(request: Request):
     signature = request.headers.get('X-Line-Signature', '')
     body = await request.body()
     body = body.decode()
+    
+    logging.info(f"Request body: {body}")
+    logging.info(f"Signature: {signature}")
 
     try:
         events = parser.parse(body, signature)
     except InvalidSignatureError:
+        logging.error("Invalid signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
@@ -92,28 +103,36 @@ async def handle_callback(request: Request):
             text = event.message.text.lower()
             user_id = event.source.user_id
             
-            if "連接spotify" in text:
-                auth_url = generate_spotify_auth_url()
-                reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-            
-            elif "推薦歌曲" in text:
-                reply_text = recommend_song(user_id)
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            try:
+                if "連接spotify" in text:
+                    auth_url = generate_spotify_auth_url()
+                    reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
+                    await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                
+                elif "推薦歌曲" in text:
+                    reply_text = recommend_song(user_id)
+                    await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-            elif "推薦播放清單" in text:
-                reply_text = recommend_playlist(user_id)
-                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                elif "推薦播放清單" in text:
+                    reply_text = recommend_playlist(user_id)
+                    await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            except Exception as e:
+                logging.error(f"Error processing event: {e}")
+                await line_bot_api.reply_message(event.reply_token, TextSendMessage(text="處理請求時發生錯誤，請稍後再試。"))
+
 # 處理 Spotify 的回調請求
 @app.get("/callback")
 async def spotify_callback(request: Request, code: str):
-    if code:
-        token = exchange_code_for_token(code)
-        # 在這裡保存訪問令牌，關聯到用戶
-        return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
-    else:
+    try:
+        if code:
+            token = exchange_code_for_token(code)
+            # 在這裡保存訪問令牌，關聯到用戶
+            return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
+        else:
+            return "Authorization failed, please try again."
+    except Exception as e:
+        logging.error(f"Error during Spotify callback: {e}")
         return "Authorization failed, please try again."
-    return 'OK'
 
 # 主程式
 if __name__ == "__main__":

@@ -29,7 +29,11 @@ def generate_spotify_auth_url():
     SPOTIFY_REDIRECT_URI = os.getenv('SPOTIFY_REDIRECT_URI')
     auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
     return auth_url
-
+    SPOTIFY_AUTH_URL = 'https://accounts.spotify.com/authorize'
+    
+    def generate_spotify_auth_url():
+    auth_url = f"{SPOTIFY_AUTH_URL}?client_id={SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={SPOTIFY_REDIRECT_URI}&scope=user-read-private user-read-email"
+    return auth_url
 # 定義 exchange_code_for_token 函數
 def exchange_code_for_token(code):
     SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')

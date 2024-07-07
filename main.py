@@ -2,11 +2,10 @@ import logging
 import os
 import re
 import sys
+from dotenv import load_dotenv
+
 if os.getenv('API_ENV') != 'production':
-    from dotenv import load_dotenv
-
     load_dotenv()
-
 
 from fastapi import FastAPI, HTTPException, Request
 from datetime import datetime
@@ -16,34 +15,28 @@ from linebot.v3.messaging import (
     AsyncMessagingApi,
     Configuration,
     ReplyMessageRequest,
-    TextMessage)
-from linebot.v3.exceptions import (
-    InvalidSignatureError
+    TextMessage
 )
+from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
 )
-
 import uvicorn
 import requests
-
-# Add spotipy library
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
 logging.basicConfig(level=os.getenv('LOG', 'WARNING'))
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-channel_secret = os.getenv('LINE_CHANNEL_SECRET', None)
-channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', None)
-if channel_secret is None:
-    print('Specify LINE_CHANNEL_SECRET as environment variable.')
-    sys.exit(1)
-if channel_access_token is None:
-    print('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
+channel_secret = os.getenv('LINE_CHANNEL_SECRET')
+channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+
+if not channel_secret or not channel_access_token:
+    logger.error('Specify LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN as environment variables.')
     sys.exit(1)
 
 configuration = Configuration(
@@ -68,6 +61,10 @@ genai.configure(api_key=gemini_key)
 spotify_client_id = os.getenv('SPOTIFY_CLIENT_ID')
 spotify_client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
+if not spotify_client_id or not spotify_client_secret:
+    logger.error('Specify SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET as environment variables.')
+    sys.exit(1)
+
 spotify_client_credentials_manager = SpotifyClientCredentials(client_id=spotify_client_id, client_secret=spotify_client_secret)
 spotify = spotipy.Spotify(client_credentials_manager=spotify_client_credentials_manager)
 
@@ -77,9 +74,11 @@ async def health():
 
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get('X-Line-Signature')
 
-    # get request body as text
+    if not signature:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
     body = await request.body()
     body = body.decode()
 
@@ -89,25 +88,24 @@ async def handle_callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     for event in events:
-        logging.info(event)
-        if not isinstance(event, MessageEvent):
+        if not isinstance(event, MessageEvent) or not isinstance(event.message, TextMessageContent):
             continue
-        if not isinstance(event.message, TextMessageContent):
-            continue
+
         text = event.message.text
         user_id = event.source.user_id
-
         msg_type = event.message.type
+
         fdb = firebase.FirebaseApplication(firebase_url, None)
+
         if event.source.type == 'group':
             user_chat_path = f'chat/{event.source.group_id}'
         else:
             user_chat_path = f'chat/{user_id}'
             chat_state_path = f'state/{user_id}'
+
         chatgpt = fdb.get(user_chat_path, None)
 
         if msg_type == 'text':
-
             if chatgpt is None:
                 messages = []
             else:
@@ -124,37 +122,32 @@ async def handle_callback(request: Request):
 
             model = genai.GenerativeModel('gemini-1.5-pro')
             response = model.generate_content(
-                f'請判斷 {text} 裡面的文字屬於 {bot_condition} 裡面的哪一項？符合條件請回傳對應的英文文字就好，不要有其他的文字與字元。')
-            print('='*10)
+                f'請判斷 {text} 裡面的文字屬於 {bot_condition} 裡面的哪一項？符合條件請回傳對應的英文文字就好，不要有其他的文字與字元。'
+            )
+
             text_condition = re.sub(r'[^A-Za-z]', '', response.text)
-            print(text_condition)
-            print('='*10)
+
             if text_condition == 'A':
                 fdb.delete(user_chat_path, None)
                 reply_msg = '已清空對話紀錄'
             elif text_condition == 'B':
                 model = genai.GenerativeModel('gemini-pro')
                 response = model.generate_content(
-                    f'Summary the following message in Traditional Chinese by less 5 list points. \n{messages}')
+                    f'Summary the following message in Traditional Chinese by less 5 list points. \n{messages}'
+                )
                 reply_msg = response.text
             elif text_condition == 'C':
-                print('='*10)
-                print("地震相關訊息")
-                print('='*10)
                 model = genai.GenerativeModel('gemini-pro-vision')
                 OPEN_API_KEY = os.getenv('OPEN_API_KEY')
                 earth_res = requests.get(f'https://opendata.cwa.gov.tw/fileapi/v1/opendataapi/E-A0015-003?Authorization={OPEN_API_KEY}&downloadType=WEB&format=JSON')
                 url = earth_res.json()["cwaopendata"]["Dataset"]["Resource"]["ProductURL"]
-                reply_msg = check_image_quake(url)+f'\n\n{url}'
+                reply_msg = check_image_quake(url) + f'\n\n{url}'
             elif text_condition == 'D':
                 location_text = '台北市'
                 location = check_location_in_message(location_text)
-                print('Location is: ' + location)
                 weather_data = get_weather_data(location)
                 simplified_data = simplify_data(weather_data)
                 current_weather = get_current_weather(simplified_data)
-
-                print('The Data is: ' + str(current_weather))
 
                 now = datetime.now()
                 formatted_time = now.strftime("%Y/%m/%d %H:%M:%S")
@@ -163,10 +156,12 @@ async def handle_callback(request: Request):
                     total_info = f'位置: {location}\n氣候: {current_weather["Wx"]}\n降雨機率: {current_weather["PoP"]}\n體感: {current_weather["CI"]}\n現在時間: {formatted_time}'
 
                 response = model.generate_content(
-                    f'請用繁體中文回答以下問題 ，{text}')
+                    f'請用繁體中文回答以下問題 ，{text}'
+                )
                 reply_msg = response.text
-            elif text_condition == '推薦歌曲':  # Handling recommendation of song
+            elif text_condition == 'F':
                 recommendations = spotify.recommendations(seed_genres=['pop'], limit=1)
+
                 if recommendations and 'tracks' in recommendations:
                     track = recommendations['tracks'][0]
                     track_name = track['name']
@@ -174,13 +169,10 @@ async def handle_callback(request: Request):
                     reply_msg = f"這是我為你推薦的歌曲：{track_name} - {artists}"
                 else:
                     reply_msg = "抱歉，我找不到符合條件的歌曲。"
-
             else:
-                # model = genai.GenerativeModel('gemini-pro')
                 messages.append({'role': 'user', 'parts': [text]})
                 response = model.generate_content(messages)
                 messages.append({'role': 'model', 'parts': [text]})
-                # 更新firebase中的對話紀錄
                 fdb.put_async(user_chat_path, None, messages)
                 reply_msg = response.text
 
@@ -188,13 +180,13 @@ async def handle_callback(request: Request):
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
                     messages=[TextMessage(text=reply_msg)]
-                ))
+                )
+            )
 
     return 'OK'
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', default=8080))
-    debug = True if os.environ.get(
-        'API_ENV', default='develop') == 'develop' else False
+    debug = os.getenv('API_ENV', default='develop') == 'develop'
     logging.info('Application will start...')
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=debug)

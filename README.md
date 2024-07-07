@@ -24,7 +24,8 @@
 - { Line }
 - {Spotify API}連接spotify帳戶並做出個人化推薦
 - {Firebase}
-###不重要的事
+  
+### 不重要的事
 -會有兩個api撞webhook導致其中一個難以使用的問題，自己做斟酌 嘻
 -我們很努力了
 

@@ -28,6 +28,10 @@ from linebot.v3.webhooks import (
 import uvicorn
 import requests
 
+# Add spotipy library
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+
 logging.basicConfig(level=os.getenv('LOG', 'WARNING'))
 logger = logging.getLogger(__file__)
 
@@ -50,24 +54,26 @@ async_api_client = AsyncApiClient(configuration)
 line_bot_api = AsyncMessagingApi(async_api_client)
 parser = WebhookParser(channel_secret)
 
-
 import google.generativeai as genai
 from firebase import firebase
 from utils import check_image_quake, check_location_in_message, get_current_weather, get_weather_data, simplify_data
 
-
 firebase_url = os.getenv('FIREBASE_URL')
 gemini_key = os.getenv('GEMINI_API_KEY')
-
 
 # Initialize the Gemini Pro API
 genai.configure(api_key=gemini_key)
 
+# Initialize Spotify API credentials
+spotify_client_id = os.getenv('SPOTIFY_CLIENT_ID')
+spotify_client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+
+spotify_client_credentials_manager = SpotifyClientCredentials(client_id=spotify_client_id, client_secret=spotify_client_secret)
+spotify = spotipy.Spotify(client_credentials_manager=spotify_client_credentials_manager)
 
 @app.get("/health")
 async def health():
     return 'ok'
-
 
 @app.post("/webhooks/line")
 async def handle_callback(request: Request):
@@ -112,7 +118,8 @@ async def handle_callback(request: Request):
                 "摘要": 'B',
                 "地震": 'C',
                 "氣候": 'D',
-                "其他": 'E'
+                "其他": 'E',
+                "推薦歌曲": 'F'  # Adding the condition for recommending a song
             }
 
             model = genai.GenerativeModel('gemini-1.5-pro')
@@ -158,6 +165,16 @@ async def handle_callback(request: Request):
                 response = model.generate_content(
                     f'請用繁體中文回答以下問題 ，{text}')
                 reply_msg = response.text
+            elif text_condition == 'F':  # Handling recommendation of song
+                recommendations = spotify.recommendations(seed_genres=['pop'], limit=1)
+                if recommendations and 'tracks' in recommendations:
+                    track = recommendations['tracks'][0]
+                    track_name = track['name']
+                    artists = ', '.join([artist['name'] for artist in track['artists']])
+                    reply_msg = f"這是我為你推薦的歌曲：{track_name} - {artists}"
+                else:
+                    reply_msg = "抱歉，我找不到符合條件的歌曲。"
+
             else:
                 # model = genai.GenerativeModel('gemini-pro')
                 messages.append({'role': 'user', 'parts': [text]})

@@ -57,6 +57,7 @@ def exchange_code_for_token(code):
         logging.error(f"Failed to exchange code for token: {response.text}")
         return None
 
+# Spotify 歌曲 URL 清單（假設這是在 Firebase 中的歌曲清單）
 spotify_tracks = [
     "https://open.spotify.com/track/3E5XrOtqMAs7p2wKhwgOjf",
     "https://open.spotify.com/track/3RauEVgRgj1IuWdJ9fDs70",
@@ -90,7 +91,7 @@ def get_user_history(user_id):
         history = []
     return history
 
-# 推薦歌曲和播放清單函數
+# 推薦歌曲函數
 def recommend_song(user_id):
     user_history = get_user_history(user_id)
     
@@ -102,13 +103,6 @@ def recommend_song(user_id):
         return f"推薦歌曲：您可以在這裡收聽歌曲：{random_track_url}"
     else:
         return "找不到相關的歌曲。"
-
-def recommend_playlist(user_id):
-    spotify_playlist_url = fdb.get('/spotify_playlist_url', None)
-    if spotify_playlist_url:
-        return f"推薦播放清單：您可以在這裡收聽播放清單：{spotify_playlist_url}"
-    else:
-        return "找不到相關的播放清單。"
 
 # 處理 LINE Webhook 請求
 @app.post("/webhooks/line")
@@ -132,44 +126,20 @@ async def handle_callback(request: Request):
             user_id = event.source.user_id
             
             try:
-                if "su3g4u dk vu ej8 " in text:
-                    auth_url = generate_spotify_auth_url()
-                    reply_text = f"請點擊以下連結以連接你的Spotify帳戶: {auth_url}"
-                    await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-                
-                elif "推薦歌曲" in text:
+                if "推薦歌曲" in text:
                     reply_text = recommend_song(user_id)
                     await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
-
-                elif "推薦播放清單" in text:
-                    reply_text = recommend_playlist(user_id)
-                    await line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+                
             except Exception as e:
                 logging.error(f"Error processing event: {e}")
                 await line_bot_api.reply_message(event.reply_token, TextSendMessage(text="處理請求時發生錯誤，請稍後再試。"))
-
-# 處理 Spotify 的回調請求
-@app.get("/callback")
-async def spotify_callback(request: Request, code: str):
-    try:
-        if code:
-            token = exchange_code_for_token(code)
-            if token:
-                # 在這裡保存訪問令牌，關聯到用戶
-                return "Spotify authorization successful! You can now go back to LINE and use Spotify features."
-            else:
-                return "Authorization failed, please try again."
-        else:
-            return "Authorization failed, please try again."
-    except Exception as e:
-        logging.error(f"Error during Spotify callback: {e}")
-        return "Authorization failed, please try again."
 
 # 主程式
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get('PORT', default=8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
 import logging
 import os
